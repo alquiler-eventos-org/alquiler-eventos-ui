@@ -4,8 +4,15 @@ import { apiAlquiler } from './client'
 // La entidad simple de Tobi: CRUD completo + búsqueda + paginación.
 // Mientras el ms de Tobi no esté corriendo, la pantalla muestra el error amigable.
 
-export function listarClientes({ page = 0, size = 10 } = {}) {
-    return apiAlquiler.get('/clientes', { params: { page, size } })
+export function listarClientes({ page = 0, size = 10, busqueda } = {}) {
+    const params = { page, size }
+    // Una sola caja de texto: mapea a los filtros que soporta el backend
+    if (busqueda) {
+        params.nombre = busqueda
+        params.documento = busqueda
+        params.email = busqueda
+    }
+    return apiAlquiler.get('/clientes/buscar', { params })
 }
 
 export function buscarClientes({ nombre, apellido, documento, email, page = 0, size = 10 } = {}) {

@@ -2,13 +2,13 @@ import axios from 'axios'
 
 /**
  * Clientes axios, uno por microservicio.
- * - ms-compras  -> Proveedores y Órdenes de Compra (puerto 8082)
- * - ms-alquiler -> Clientes y Órdenes de Alquiler (puerto 8081)
  *
- * En desarrollo Vite hace de proxy (ver vite.config.js): el navegador llama a
- * /ms/compras/... y Vite lo reenvía a http://localhost:8082/api/...
- * Para apuntar a otra URL (ej. backend desplegado) definí VITE_API_COMPRAS /
- * VITE_API_ALQUILER en un .env.local
+ * Ambos pasan por el API GATEWAY (puerto 8080), que enruta a cada
+ * microservicio via Eureka (lb://). En desarrollo Vite hace de proxy
+ * (ver vite.config.js): el navegador llama a /ms/compras/... o
+ * /ms/alquiler/... y Vite lo reenvia al Gateway http://localhost:8080/api/...
+ * Para apuntar a otra URL (ej. backend desplegado) definí
+ * VITE_API_COMPRAS / VITE_API_ALQUILER en un .env.local
  */
 export const apiCompras = axios.create({
     baseURL: import.meta.env.VITE_API_COMPRAS ?? '/ms/compras',
@@ -26,7 +26,7 @@ export const apiAlquiler = axios.create({
  */
 export function mensajeDeError(error, fallback = 'Ocurrió un error inesperado') {
     if (!error?.response) {
-        return 'No hay conexión con el microservicio. ¿Está corriendo?'
+        return 'No hay conexión con el API Gateway. ¿Están corriendo Eureka, los microservicios y el gateway?'
     }
     return error.response?.data?.mensaje ?? fallback
 }
@@ -34,7 +34,6 @@ export function mensajeDeError(error, fallback = 'Ocurrió un error inesperado')
 /**
  * Normaliza la respuesta a la forma de página que usa el proyecto:
  * { contenido, totalElementos, numeroPagina, tamanoPagina }
- * Útil mientras algún microservicio todavía devuelve un array plano.
  */
 export function normalizarPagina(data, page = 0, size = 10) {
     if (Array.isArray(data)) {
@@ -43,6 +42,15 @@ export function normalizarPagina(data, page = 0, size = 10) {
             totalElementos: data.length,
             numeroPagina: page,
             tamanoPagina: size,
+        }
+    }
+    // Spring Page (ms-alquiler devuelve Page<Cliente> de Spring Data)
+    if (data && Array.isArray(data.content)) {
+        return {
+            contenido: data.content,
+            totalElementos: data.totalElements ?? data.content.length,
+            numeroPagina: data.number ?? page,
+            tamanoPagina: data.size ?? size,
         }
     }
     return (

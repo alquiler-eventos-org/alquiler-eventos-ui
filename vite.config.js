@@ -6,16 +6,18 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {
-      // El navegador llama a /ms/compras/** y Vite lo reenvía al microservicio
-      // de compras (puerto 8082). Así no hace falta CORS en desarrollo.
+      // Las dos rutas van al API GATEWAY (puerto 8080), que las enruta a
+      // ms-compras o ms-alquiler via Eureka. Toda la UI pasa por la puerta
+      // unica: igual que en la demo de la rubrica.
       '/ms/compras': {
-        target: 'http://localhost:8082',
+        target: 'http://localhost:8080',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/ms\/compras/, '/api'),
       },
-      // Ídem para el microservicio de alquiler (puerto 8081).
+      // En la practica ambas rutas llegan al MISMO gateway; se separa el
+      // prefijo solo para que el front distinga que microservicio usa.
       '/ms/alquiler': {
-        target: 'http://localhost:8081',
+        target: 'http://localhost:8080',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/ms\/alquiler/, '/api'),
       },
