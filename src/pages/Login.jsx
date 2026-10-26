@@ -1,23 +1,35 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
+import { mensajeDeError } from '../api/client'
 
 export default function Login() {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [error, setError] = useState('')
-    const { login } = useAuth()
+    const [cargando, setCargando] = useState(false)
+    const { user, login } = useAuth()
     const navigate = useNavigate()
 
-    function handleSubmit(e) {
+    // Si ya hay sesión vigente no tiene sentido mostrar el login.
+    if (user) return <Navigate to="/dashboard" replace />
+
+    async function handleSubmit(e) {
         e.preventDefault()
         if (!email.trim() || !password.trim()) {
             setError('Completá email y contraseña.')
             return
         }
         setError('')
-        login(email)
-        navigate('/dashboard')
+        setCargando(true)
+        try {
+            await login(email.trim(), password)
+            navigate('/dashboard')
+        } catch (err) {
+            setError(mensajeDeError(err, 'No se pudo iniciar sesión'))
+        } finally {
+            setCargando(false)
+        }
     }
 
     return (
@@ -51,9 +63,10 @@ export default function Login() {
 
                 <button
                     type="submit"
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 rounded-lg transition"
+                    disabled={cargando}
+                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-medium py-2 rounded-lg transition"
                 >
-                    Ingresar
+                    {cargando ? 'Ingresando…' : 'Ingresar'}
                 </button>
             </form>
         </div>
