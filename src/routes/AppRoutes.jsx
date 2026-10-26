@@ -25,6 +25,8 @@ function SinPermisos() {
 }
 
 // Guardia de ruta: sin sesión => login; con sesión pero sin el rol => aviso.
+// Cada página ya se dibuja dentro de su propio AppLayout, por eso acá solo se
+// envuelve el aviso de "Sin permisos".
 function protegida(elemento, roles) {
     return <Protegida roles={roles}>{elemento}</Protegida>
 }
@@ -32,9 +34,14 @@ function protegida(elemento, roles) {
 function Protegida({ roles, children }) {
     const { user } = useAuth()
     if (!user) return <Navigate to="/login" replace />
-    return (
-        <AppLayout>{tieneRol(user, roles) ? children : <SinPermisos />}</AppLayout>
-    )
+    if (!tieneRol(user, roles)) {
+        return (
+            <AppLayout>
+                <SinPermisos />
+            </AppLayout>
+        )
+    }
+    return children
 }
 
 export default function AppRoutes() {
