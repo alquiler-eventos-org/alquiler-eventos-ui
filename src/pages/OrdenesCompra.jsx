@@ -1,116 +1,285 @@
 import { useState } from 'react'
 import AppLayout from '../layouts/AppLayout'
-import { Badge, Modal, filtroCls } from '../components/UI'
+import {
+    Badge,
+    BotonPrimario,
+    BotonSecundario,
+    Campo,
+    Cargando,
+    ErrorBanner,
+    Modal,
+    Paginacion,
+    SinDatos,
+    filtroCls,
+    inputCls,
+} from '../components/UI'
+import LineasEditor from '../components/LineasEditor'
+import { LINEA_VACIA, lineasADetalles } from '../utils/lineas'
 import { formatoGs } from '../utils/formato'
+import { mensajeDeError, normalizarPagina } from '../api/client'
+import { useConsulta } from '../hooks/useConsulta'
+import { listarProveedores } from '../api/proveedores'
+import { listarEquipos } from '../api/equipos'
+import {
+    cambiarEstadoOrdenCompra,
+    crearOrdenCompra,
+    listarOrdenesCompra,
+} from '../api/ordenesCompra'
 
-// ====== DATOS DE MAQUETA (pantalla estática — luego se conecta a ms-compras /ordenes-compra) ======
-// Estados con transiciones válidas: PENDIENTE -> CONFIRMADA -> RECIBIDA, PENDIENTE -> ANULADA
-const ordenes = [
-    { id: '#OC-201', proveedor: 'Distribuidora Fiesta PY', fecha: '2026-09-15', estado: 'PENDIENTE', total: 1250000 },
-    { id: '#OC-202', proveedor: 'Eventos & Sonido SA', fecha: '2026-09-16', estado: 'CONFIRMADA', total: 3400000 },
-    { id: '#OC-203', proveedor: 'Mobiliario Central', fecha: '2026-09-10', estado: 'RECIBIDA', total: 890000 },
-    { id: '#OC-204', proveedor: 'Textiles del Este', fecha: '2026-09-08', estado: 'ANULADA', total: 560000 },
-]
+// ====== Pantalla REAL: órdenes de compra de ms-compras via el API Gateway ======
+// Estados: PENDIENTE -> CONFIRMADA -> RECIBIDA, y PENDIENTE -> ANULADA.
 
-// Detalle estático (cabecera + líneas con equipos)
-const detallesMock = {
-    '#OC-201': [
-        { equipo: 'Carpa 5x10 Grande', cantidad: 2, precio: 500000, subtotal: 1000000 },
-        { equipo: 'Calefactor Eléctrico', cantidad: 5, precio: 50000, subtotal: 250000 },
-    ],
-    '#OC-202': [
-        { equipo: 'Parlante JBL 15', cantidad: 4, precio: 750000, subtotal: 3000000 },
-        { equipo: 'Micrófono inalámbrico', cantidad: 2, precio: 200000, subtotal: 400000 },
-    ],
-}
-
+const TAMANO_PAGINA = 6
 const filtros = ['Todas', 'PENDIENTE', 'CONFIRMADA', 'RECIBIDA', 'ANULADA']
 
+const TRANSICIONES = {
+    PENDIENTE: ['CONFIRMADA', 'ANULADA'],
+    CONFIRMADA: ['RECIBIDA'],
+    RECIBIDA: [],
+    ANULADA: [],
+}
+
+const textoAccion = {
+    CONFIRMADA: 'Confirmar',
+    RECIBIDA: 'Marcar como recibida',
+    ANULADA: 'Anular',
+}
+
 export default function OrdenesCompra() {
-    const [busqueda, setBusqueda] = useState('')
+    const [pagina, setPagina] = useState(0)
     const [filtro, setFiltro] = useState('Todas')
     const [detalle, setDetalle] = useState(null)
+    const [errorAccion, setErrorAccion] = useState('')
+    const [guardando, setGuardando] = useState(false)
+    const [nueva, setNueva] = useState(null)
+    const [errorNueva, setErrorNueva] = useState('')
 
-    const filtradas = ordenes.filter(
-        (o) =>
-            (filtro === 'Todas' || o.estado === filtro) &&
-            `${o.id} ${o.proveedor}`.toLowerCase().includes(busqueda.toLowerCase()),
+    const estado = filtro === 'Todas' ? undefined : filtro
+    const { datos, error, cargando, recargar } = useConsulta(
+        () =>
+            listarOrdenesCompra({
+                page: pagina,
+                size: TAMANO_PAGINA,
+                filtros: estado ? { estado } : {},
+            }),
+        [pagina, filtro],
     )
+    const p = datos ? normalizarPagina(datos, pagina, TAMANO_PAGINA) : null
+    const totalPaginas = Math.max(1, Math.ceil((p?.totalElementos ?? 0) / TAMANO_PAGINA))
 
-    const lineas = detalle ? (detallesMock[detalle.id] ?? []) : []
-    const totalDetalle = lineas.reduce((acc, l) => acc + l.subtotal, 0)
+    // Nombres: la orden trae proveedorId / equipoId; se resuelven con estas listas.
+    const { datos: proveedoresDatos } = useConsulta(
+        () => listarProveedores({ page: 0, size: 100 }),
+        [],
+    )
+    const { datos: equiposDatos } = useConsulta(() => listarEquipos({}), [])
+    const proveedores = proveedoresDatos ? normalizarPagina(proveedoresDatos).contenido : []
+    const equipos = equiposDatos ? normalizarPagina(equiposDatos).contenido : null
+
+    const nombreProveedor = (o) =>
+        o.proveedorNombre ??
+        proveedores.find((pr) => pr.id === o.proveedorId)?.nombre ??
+        `Proveedor #${o.proveedorId}`
+    const nombreEquipo = (l) =>
+        l.equipoNombre ??
+        equipos?.find((eq) => eq.id === l.equipoId)?.nombre ??
+        `Equipo #${l.equipoId}`
+
+    function cambiarFiltro(nuevo) {
+        setFiltro(nuevo)
+        setPagina(0)
+    }
+
+    function abrirDetalle(orden) {
+        setErrorAccion('')
+        setDetalle(orden)
+    }
+
+    async function cambiarEstado(orden, nuevoEstado) {
+        if (!window.confirm(`¿Pasar la orden de compra #${orden.id} a ${nuevoEstado}?`)) return
+        setGuardando(true)
+        setErrorAccion('')
+        try {
+            await cambiarEstadoOrdenCompra(orden.id, nuevoEstado)
+            setDetalle(null)
+            recargar()
+        } catch (err) {
+            setErrorAccion(mensajeDeError(err))
+        } finally {
+            setGuardando(false)
+        }
+    }
+
+    function abrirNueva() {
+        setErrorNueva('')
+        setNueva({
+            proveedorId: '',
+            fechaCompra: new Date().toISOString().slice(0, 10),
+            lineas: [{ ...LINEA_VACIA }],
+        })
+    }
+
+    async function guardarNueva(e) {
+        e.preventDefault()
+        const detalles = lineasADetalles(nueva.lineas, true)
+        if (!nueva.proveedorId || !nueva.fechaCompra) {
+            setErrorNueva('Elegí el proveedor y la fecha de compra.')
+            return
+        }
+        if (
+            detalles.length === 0 ||
+            detalles.some((d) => !(d.cantidad >= 1) || !(d.costoUnitario >= 0) || Number.isNaN(d.costoUnitario))
+        ) {
+            setErrorNueva('Agregá al menos un equipo con cantidad y costo unitario válidos.')
+            return
+        }
+        setGuardando(true)
+        setErrorNueva('')
+        try {
+            await crearOrdenCompra({
+                proveedorId: Number(nueva.proveedorId),
+                fechaCompra: nueva.fechaCompra,
+                detalles,
+            })
+            setNueva(null)
+            setPagina(0)
+            recargar()
+        } catch (err) {
+            setErrorNueva(mensajeDeError(err, 'No se pudo crear la orden de compra'))
+        } finally {
+            setGuardando(false)
+        }
+    }
+
+    const acciones = detalle ? (TRANSICIONES[detalle.estado] ?? []) : []
 
     return (
         <AppLayout titulo="Órdenes de Compra">
             <div className="flex items-center justify-between mb-6">
-                <p className="text-xs text-gray-400">{filtradas.length} órdenes</p>
+                <p className="text-xs text-gray-400">
+                    {cargando ? 'Cargando…' : `${p?.totalElementos ?? 0} órdenes`}
+                </p>
                 <div className="flex items-center gap-2">
-                    <input
-                        value={busqueda}
-                        onChange={(e) => setBusqueda(e.target.value)}
-                        className={filtroCls}
-                        placeholder="Buscar orden o proveedor…"
-                    />
                     <select
                         value={filtro}
-                        onChange={(e) => setFiltro(e.target.value)}
+                        onChange={(e) => cambiarFiltro(e.target.value)}
                         className={filtroCls}
                     >
                         {filtros.map((f) => (
                             <option key={f} value={f}>{f}</option>
                         ))}
                     </select>
-                    <button className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition">
-                        + Nueva orden
-                    </button>
+                    <BotonPrimario onClick={abrirNueva}>+ Nueva orden</BotonPrimario>
                 </div>
             </div>
 
+            {error && (
+                <div className="mb-4">
+                    <ErrorBanner mensaje={error} onReintentar={recargar} />
+                </div>
+            )}
+
             <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
-                <table className="w-full text-sm">
-                    <thead>
-                        <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
-                            <th className="px-4 py-3 font-medium">Orden</th>
-                            <th className="px-4 py-3 font-medium">Proveedor</th>
-                            <th className="px-4 py-3 font-medium">Fecha</th>
-                            <th className="px-4 py-3 font-medium">Estado</th>
-                            <th className="px-4 py-3 font-medium">Total</th>
-                            <th className="px-4 py-3 font-medium text-right">Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {filtradas.map((o) => (
-                            <tr key={o.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
-                                <td className="px-4 py-3 text-gray-400">{o.id}</td>
-                                <td className="px-4 py-3 text-gray-700">{o.proveedor}</td>
-                                <td className="px-4 py-3 text-gray-700">{o.fecha}</td>
-                                <td className="px-4 py-3">
-                                    <Badge estado={o.estado} />
-                                </td>
-                                <td className="px-4 py-3 text-gray-700">{formatoGs(o.total)}</td>
-                                <td className="px-4 py-3 text-right">
-                                    <button
-                                        onClick={() => setDetalle(o)}
-                                        className="text-blue-600 hover:underline text-xs"
-                                    >
-                                        Ver
-                                    </button>
-                                </td>
+                {cargando && !p ? (
+                    <Cargando />
+                ) : (
+                    <table className="w-full text-sm">
+                        <thead>
+                            <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
+                                <th className="px-4 py-3 font-medium">Orden</th>
+                                <th className="px-4 py-3 font-medium">Proveedor</th>
+                                <th className="px-4 py-3 font-medium">Fecha</th>
+                                <th className="px-4 py-3 font-medium">Estado</th>
+                                <th className="px-4 py-3 font-medium">Total</th>
+                                <th className="px-4 py-3 font-medium text-right">Acciones</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
-                {filtradas.length === 0 && (
-                    <p className="text-sm text-gray-400 text-center py-8">
-                        No hay órdenes que coincidan con el filtro.
-                    </p>
+                        </thead>
+                        <tbody>
+                            {(p?.contenido ?? []).map((o) => (
+                                <tr
+                                    key={o.id}
+                                    className="border-b border-gray-50 last:border-0 hover:bg-gray-50"
+                                >
+                                    <td className="px-4 py-3 text-gray-400">#OC-{o.id}</td>
+                                    <td className="px-4 py-3 text-gray-700">{nombreProveedor(o)}</td>
+                                    <td className="px-4 py-3 text-gray-700">{o.fechaCompra}</td>
+                                    <td className="px-4 py-3">
+                                        <Badge estado={o.estado} />
+                                    </td>
+                                    <td className="px-4 py-3 text-gray-700">{formatoGs(o.total)}</td>
+                                    <td className="px-4 py-3 text-right">
+                                        <button
+                                            onClick={() => abrirDetalle(o)}
+                                            className="text-blue-600 hover:underline text-xs"
+                                        >
+                                            Ver
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
+                {!cargando && !error && (p?.contenido ?? []).length === 0 && (
+                    <SinDatos mensaje="No hay órdenes que coincidan con el filtro." />
                 )}
             </div>
 
-            {/* Modal de detalle — estático, sin conexión */}
+            <Paginacion pagina={pagina} totalPaginas={totalPaginas} onCambiar={setPagina} />
+
+            <Modal
+                abierto={!!nueva}
+                titulo="Nueva orden de compra"
+                onCerrar={() => setNueva(null)}
+                ancho="max-w-xl"
+            >
+                {nueva && (
+                    <form onSubmit={guardarNueva}>
+                        <Campo label="Proveedor *">
+                            <select
+                                value={nueva.proveedorId}
+                                onChange={(e) => setNueva({ ...nueva, proveedorId: e.target.value })}
+                                className={inputCls}
+                            >
+                                <option value="">Elegir proveedor…</option>
+                                {proveedores.map((pr) => (
+                                    <option key={pr.id} value={pr.id}>{pr.nombre}</option>
+                                ))}
+                            </select>
+                        </Campo>
+                        <Campo label="Fecha de compra *">
+                            <input
+                                type="date"
+                                value={nueva.fechaCompra}
+                                onChange={(e) => setNueva({ ...nueva, fechaCompra: e.target.value })}
+                                className={inputCls}
+                            />
+                        </Campo>
+                        <LineasEditor
+                            lineas={nueva.lineas}
+                            onChange={(lineas) => setNueva({ ...nueva, lineas })}
+                            equipos={equipos}
+                            conCosto
+                        />
+                        <p className="text-xs text-gray-400 mb-4">
+                            Los subtotales y el total los calcula el servidor. La orden nace en estado PENDIENTE.
+                        </p>
+                        {errorNueva && <p className="text-red-500 text-xs mb-3">{errorNueva}</p>}
+                        <div className="flex justify-end gap-2">
+                            <BotonSecundario type="button" onClick={() => setNueva(null)}>
+                                Cancelar
+                            </BotonSecundario>
+                            <BotonPrimario type="submit" disabled={guardando}>
+                                {guardando ? 'Guardando…' : 'Crear orden'}
+                            </BotonPrimario>
+                        </div>
+                    </form>
+                )}
+            </Modal>
+
             <Modal
                 abierto={!!detalle}
-                titulo={`Detalle de orden ${detalle?.id ?? ''}`}
+                titulo={`Detalle de orden #OC-${detalle?.id ?? ''}`}
                 onCerrar={() => setDetalle(null)}
                 ancho="max-w-2xl"
             >
@@ -119,11 +288,11 @@ export default function OrdenesCompra() {
                         <div className="grid grid-cols-2 gap-4 text-sm mb-6">
                             <div>
                                 <p className="text-xs text-gray-400">Proveedor</p>
-                                <p className="text-gray-900 font-medium">{detalle.proveedor}</p>
+                                <p className="text-gray-900 font-medium">{nombreProveedor(detalle)}</p>
                             </div>
                             <div>
-                                <p className="text-xs text-gray-400">Fecha</p>
-                                <p className="text-gray-900 font-medium">{detalle.fecha}</p>
+                                <p className="text-xs text-gray-400">Fecha de compra</p>
+                                <p className="text-gray-900 font-medium">{detalle.fechaCompra}</p>
                             </div>
                             <div>
                                 <p className="text-xs text-gray-400">Estado</p>
@@ -136,23 +305,23 @@ export default function OrdenesCompra() {
                                 <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
                                     <th className="py-2 font-medium">Equipo</th>
                                     <th className="py-2 font-medium">Cant.</th>
-                                    <th className="py-2 font-medium">Precio</th>
+                                    <th className="py-2 font-medium">Costo unit.</th>
                                     <th className="py-2 font-medium text-right">Subtotal</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {lineas.map((l) => (
-                                    <tr key={l.equipo} className="border-b border-gray-50">
-                                        <td className="py-2 text-gray-700">{l.equipo}</td>
+                                {(detalle.detalles ?? []).map((l, i) => (
+                                    <tr key={l.id ?? i} className="border-b border-gray-50">
+                                        <td className="py-2 text-gray-700">{nombreEquipo(l)}</td>
                                         <td className="py-2 text-gray-700">{l.cantidad}</td>
-                                        <td className="py-2 text-gray-700">{formatoGs(l.precio)}</td>
+                                        <td className="py-2 text-gray-700">{formatoGs(l.costoUnitario)}</td>
                                         <td className="py-2 text-gray-700 text-right">{formatoGs(l.subtotal)}</td>
                                     </tr>
                                 ))}
-                                {lineas.length === 0 && (
+                                {(detalle.detalles ?? []).length === 0 && (
                                     <tr>
                                         <td colSpan={4} className="py-4 text-center text-gray-400 text-xs">
-                                            Sin líneas de detalle en la maqueta.
+                                            Esta orden no tiene líneas de detalle.
                                         </td>
                                     </tr>
                                 )}
@@ -161,22 +330,31 @@ export default function OrdenesCompra() {
 
                         <div className="flex items-center justify-between text-sm font-semibold text-gray-900 mb-6">
                             <span>Total</span>
-                            <span>{formatoGs(totalDetalle)}</span>
+                            <span>{formatoGs(detalle.total)}</span>
                         </div>
 
+                        {errorAccion && (
+                            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-4">
+                                {errorAccion}
+                            </div>
+                        )}
+
                         <div className="flex justify-end gap-2">
-                            <button
-                                onClick={() => setDetalle(null)}
-                                className="border border-gray-200 hover:bg-gray-50 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg transition"
-                            >
-                                Cerrar
-                            </button>
-                            <button className="border border-gray-200 hover:bg-gray-50 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg transition">
-                                Imprimir
-                            </button>
-                            <button className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition">
-                                Cambiar estado
-                            </button>
+                            <BotonSecundario onClick={() => setDetalle(null)}>Cerrar</BotonSecundario>
+                            {acciones.map((e) => (
+                                <button
+                                    key={e}
+                                    disabled={guardando}
+                                    onClick={() => cambiarEstado(detalle, e)}
+                                    className={`disabled:opacity-60 text-white text-sm font-medium px-4 py-2 rounded-lg transition ${
+                                        e === 'ANULADA'
+                                            ? 'bg-red-600 hover:bg-red-700'
+                                            : 'bg-blue-600 hover:bg-blue-700'
+                                    }`}
+                                >
+                                    {textoAccion[e]}
+                                </button>
+                            ))}
                         </div>
                     </div>
                 )}

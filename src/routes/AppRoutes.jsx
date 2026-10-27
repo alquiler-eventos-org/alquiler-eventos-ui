@@ -62,7 +62,7 @@ export default function AppRoutes() {
             />
             <Route path="/proveedores" element={protegida(<Proveedores />, ROLES.compras)} />
             <Route path="/usuarios" element={protegida(<Usuarios />, ROLES.seguridad)} />
-            <Route path="/reportes" element={protegida(<Reportes />)} />
+            <Route path="/reportes" element={protegida(<Reportes />, ROLES.alquiler)} />
             <Route path="/configuracion" element={protegida(<Configuracion />)} />
             <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>

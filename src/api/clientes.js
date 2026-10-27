@@ -4,15 +4,28 @@ import { apiAlquiler } from './client'
 // La entidad simple de Tobi: CRUD completo + búsqueda + paginación.
 // Mientras el ms de Tobi no esté corriendo, la pantalla muestra el error amigable.
 
-export function listarClientes({ page = 0, size = 10, busqueda } = {}) {
-    const params = { page, size }
-    // Una sola caja de texto: mapea a los filtros que soporta el backend
-    if (busqueda) {
-        params.nombre = busqueda
-        params.documento = busqueda
-        params.email = busqueda
+// El backend filtra con AND entre todos los parámetros, así que la caja de
+// búsqueda única se traduce a UN filtro según lo que escribió el usuario.
+function filtrosDeBusqueda(texto) {
+    const t = (texto ?? '').trim()
+    if (!t) return {}
+    if (t.includes('@')) return { email: t }
+    if (/^[\d.-]+$/.test(t)) return { documento: t }
+    const partes = t.split(/\s+/)
+    if (partes.length > 1) return { nombre: partes[0], apellido: partes.slice(1).join(' ') }
+    return { nombre: t }
+}
+
+export async function listarClientes({ page = 0, size = 10, busqueda } = {}) {
+    const filtros = filtrosDeBusqueda(busqueda)
+    const consultar = (extra) =>
+        apiAlquiler.get('/clientes/buscar', { params: { page, size, ...extra } })
+    const resp = await consultar(filtros)
+    // Una sola palabra sin resultados como nombre: se prueba como apellido.
+    if (filtros.nombre && !filtros.apellido && resp.data?.totalElements === 0) {
+        return consultar({ apellido: filtros.nombre })
     }
-    return apiAlquiler.get('/clientes/buscar', { params })
+    return resp
 }
 
 export function buscarClientes({ nombre, apellido, documento, email, page = 0, size = 10 } = {}) {

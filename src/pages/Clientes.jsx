@@ -1,109 +1,147 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import AppLayout from '../layouts/AppLayout'
-import { filtroCls } from '../components/UI'
-import { listarClientes, eliminarCliente } from '../api/clientes'
+import {
+    BotonPrimario,
+    BotonSecundario,
+    Campo,
+    Cargando,
+    ErrorBanner,
+    Modal,
+    Paginacion,
+    SinDatos,
+    filtroCls,
+    inputCls,
+} from '../components/UI'
+import { actualizarCliente, crearCliente, eliminarCliente, listarClientes } from '../api/clientes'
 import { mensajeDeError, normalizarPagina } from '../api/client'
+import { useConsulta } from '../hooks/useConsulta'
 
-// ====== Pantalla REAL: trae los clientes desde ms-alquiler via el API Gateway ======
-// La paginacion es server-side: cada "Pagina" pide al backend la pagina siguiente.
+// ====== Pantalla REAL: clientes de ms-alquiler via el API Gateway ======
+// Listado paginado y búsqueda en el servidor; alta, edición y baja lógica.
 
 const TAMANO_PAGINA = 6
+const FORM_VACIO = {
+    nombre: '',
+    apellido: '',
+    documento: '',
+    telefono: '',
+    email: '',
+    direccion: '',
+    notas: '',
+}
 
 export default function Clientes() {
     const [pagina, setPagina] = useState(0)
     const [busqueda, setBusqueda] = useState('')
-    const [contenido, setContenido] = useState([])
-    const [totalElementos, setTotalElementos] = useState(0)
-    const [cargando, setCargando] = useState(true)
-    const [error, setError] = useState('')
+    const [termino, setTermino] = useState('')
+    const [modal, setModal] = useState({ abierto: false, id: null })
+    const [form, setForm] = useState(FORM_VACIO)
+    const [errorForm, setErrorForm] = useState('')
+    const [errorAccion, setErrorAccion] = useState('')
+    const [guardando, setGuardando] = useState(false)
 
-    const cargar = useCallback(async (nroPagina) => {
-        setCargando(true)
-        setError('')
-        try {
-            let data
-            if (busqueda.trim()) {
-                const resp = await listarClientes({ busqueda: busqueda.trim(), page: nroPagina, size: TAMANO_PAGINA })
-                data = normalizarPagina(resp.data, nroPagina, TAMANO_PAGINA)
-            } else {
-                const resp = await listarClientes({ page: nroPagina, size: TAMANO_PAGINA })
-                data = normalizarPagina(resp.data, nroPagina, TAMANO_PAGINA)
-            }
-            setContenido(data.contenido)
-            setTotalElementos(data.totalElementos)
-        } catch (err) {
-            setError(mensajeDeError(err))
-            setContenido([])
-            setTotalElementos(0)
-        } finally {
-            setCargando(false)
-        }
-    }, [busqueda])
+    const { datos, error, cargando, recargar } = useConsulta(
+        () => listarClientes({ page: pagina, size: TAMANO_PAGINA, busqueda: termino }),
+        [pagina, termino],
+    )
+    const p = datos ? normalizarPagina(datos, pagina, TAMANO_PAGINA) : null
+    const totalPaginas = Math.max(1, Math.ceil((p?.totalElementos ?? 0) / TAMANO_PAGINA))
 
-    useEffect(() => {
-        cargar(pagina)
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [pagina])
-
-    function handleSubmitBusqueda(e) {
+    function buscar(e) {
         e.preventDefault()
         setPagina(0)
-        cargar(0)
+        setTermino(busqueda.trim())
     }
 
-    async function handleEliminar(id) {
-        if (!window.confirm('¿Eliminar (borrado logico) este cliente?')) return
+    function abrirNuevo() {
+        setForm(FORM_VACIO)
+        setErrorForm('')
+        setModal({ abierto: true, id: null })
+    }
+
+    function abrirEdicion(c) {
+        setForm({
+            nombre: c.nombre ?? '',
+            apellido: c.apellido ?? '',
+            documento: c.documento ?? '',
+            telefono: c.telefono ?? '',
+            email: c.email ?? '',
+            direccion: c.direccion ?? '',
+            notas: c.notas ?? '',
+        })
+        setErrorForm('')
+        setModal({ abierto: true, id: c.id })
+    }
+
+    function cambiar(campo, valor) {
+        setForm((f) => ({ ...f, [campo]: valor }))
+    }
+
+    async function guardar(e) {
+        e.preventDefault()
+        if (!form.nombre.trim() || !form.apellido.trim() || !form.documento.trim()) {
+            setErrorForm('Nombre, apellido y documento son obligatorios.')
+            return
+        }
+        // Los campos vacíos van como null (email y documento son únicos en la base).
+        const request = Object.fromEntries(
+            Object.entries(form).map(([k, v]) => [k, v.trim() === '' ? null : v.trim()]),
+        )
+        setGuardando(true)
+        setErrorForm('')
         try {
-            await eliminarCliente(id)
-            cargar(pagina)
+            if (modal.id) await actualizarCliente(modal.id, request)
+            else await crearCliente(request)
+            setModal({ abierto: false, id: null })
+            recargar()
         } catch (err) {
-            setError(mensajeDeError(err))
+            setErrorForm(mensajeDeError(err, 'No se pudo guardar el cliente'))
+        } finally {
+            setGuardando(false)
         }
     }
 
-    const totalPaginas = Math.max(1, Math.ceil(totalElementos / TAMANO_PAGINA))
+    async function eliminar(c) {
+        if (!window.confirm(`¿Dar de baja a ${c.nombre} ${c.apellido}? (borrado lógico)`)) return
+        setErrorAccion('')
+        try {
+            await eliminarCliente(c.id)
+            recargar()
+        } catch (err) {
+            setErrorAccion(mensajeDeError(err))
+        }
+    }
 
     return (
         <AppLayout titulo="Clientes">
             <div className="flex items-center justify-between mb-6">
                 <p className="text-xs text-gray-400">
-                    {cargando ? 'Cargando…' : `${totalElementos} clientes (datos reales via gateway)`}
+                    {cargando ? 'Cargando…' : `${p?.totalElementos ?? 0} clientes`}
                 </p>
                 <div className="flex items-center gap-2">
-                    <form onSubmit={handleSubmitBusqueda} className="flex gap-2">
+                    <form onSubmit={buscar} className="flex gap-2">
                         <input
                             value={busqueda}
                             onChange={(e) => setBusqueda(e.target.value)}
                             className={filtroCls}
-                            placeholder="Buscar por nombre, documento o email…"
+                            placeholder="Nombre, documento o email…"
                         />
-                        <button
-                            type="submit"
-                            className="bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-medium px-3 py-2 rounded-lg border border-gray-200 transition"
-                        >
-                            Buscar
-                        </button>
+                        <BotonSecundario type="submit">Buscar</BotonSecundario>
                     </form>
-                    <button className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition">
-                        + Nuevo cliente
-                    </button>
+                    <BotonPrimario onClick={abrirNuevo}>+ Nuevo cliente</BotonPrimario>
                 </div>
             </div>
 
-            {error && (
-                <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-4 py-3 mb-4">
-                    {error}
+            {(error || errorAccion) && (
+                <div className="mb-4">
+                    <ErrorBanner mensaje={error || errorAccion} onReintentar={recargar} />
                 </div>
             )}
 
-            {cargando && !contenido.length && (
-                <div className="bg-white rounded-xl border border-gray-200 p-10 text-center text-sm text-gray-400">
-                    Cargando clientes desde el microservicio…
-                </div>
-            )}
-
-            {!cargando && !error && (
-                <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+            <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+                {cargando && !p ? (
+                    <Cargando />
+                ) : (
                     <table className="w-full text-sm">
                         <thead>
                             <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
@@ -116,8 +154,11 @@ export default function Clientes() {
                             </tr>
                         </thead>
                         <tbody>
-                            {contenido.map((c) => (
-                                <tr key={c.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
+                            {(p?.contenido ?? []).map((c) => (
+                                <tr
+                                    key={c.id}
+                                    className="border-b border-gray-50 last:border-0 hover:bg-gray-50"
+                                >
                                     <td className="px-4 py-3 text-gray-700">
                                         {c.nombre} {c.apellido}
                                     </td>
@@ -136,9 +177,14 @@ export default function Clientes() {
                                         </span>
                                     </td>
                                     <td className="px-4 py-3 text-right space-x-3">
-                                        <button className="text-blue-600 hover:underline text-xs">Editar</button>
                                         <button
-                                            onClick={() => handleEliminar(c.id)}
+                                            onClick={() => abrirEdicion(c)}
+                                            className="text-blue-600 hover:underline text-xs"
+                                        >
+                                            Editar
+                                        </button>
+                                        <button
+                                            onClick={() => eliminar(c)}
                                             className="text-red-500 hover:underline text-xs"
                                         >
                                             Eliminar
@@ -146,40 +192,93 @@ export default function Clientes() {
                                     </td>
                                 </tr>
                             ))}
-                            {!contenido.length && (
-                                <tr>
-                                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">
-                                        No hay clientes que coincidan con la búsqueda.
-                                    </td>
-                                </tr>
-                            )}
                         </tbody>
                     </table>
-                </div>
-            )}
-
-            {/* Paginacion server-side real */}
-            <div className="flex items-center justify-between mt-4">
-                <p className="text-xs text-gray-400">
-                    Página {pagina + 1} de {totalPaginas}
-                </p>
-                <div className="flex gap-2">
-                    <button
-                        disabled={pagina === 0 || cargando}
-                        onClick={() => setPagina((p) => Math.max(0, p - 1))}
-                        className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                        ← Anterior
-                    </button>
-                    <button
-                        disabled={pagina + 1 >= totalPaginas || cargando}
-                        onClick={() => setPagina((p) => p + 1)}
-                        className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                        Siguiente →
-                    </button>
-                </div>
+                )}
+                {!cargando && !error && (p?.contenido ?? []).length === 0 && (
+                    <SinDatos mensaje="No hay clientes que coincidan con la búsqueda." />
+                )}
             </div>
+
+            <Paginacion pagina={pagina} totalPaginas={totalPaginas} onCambiar={setPagina} />
+
+            <Modal
+                abierto={modal.abierto}
+                titulo={modal.id ? `Editar cliente #${modal.id}` : 'Nuevo cliente'}
+                onCerrar={() => setModal({ abierto: false, id: null })}
+            >
+                <form onSubmit={guardar}>
+                    <div className="grid grid-cols-2 gap-x-4">
+                        <Campo label="Nombre *">
+                            <input
+                                value={form.nombre}
+                                onChange={(e) => cambiar('nombre', e.target.value)}
+                                className={inputCls}
+                            />
+                        </Campo>
+                        <Campo label="Apellido *">
+                            <input
+                                value={form.apellido}
+                                onChange={(e) => cambiar('apellido', e.target.value)}
+                                className={inputCls}
+                            />
+                        </Campo>
+                        <Campo label="Documento *">
+                            <input
+                                value={form.documento}
+                                onChange={(e) => cambiar('documento', e.target.value)}
+                                className={inputCls}
+                            />
+                        </Campo>
+                        <Campo label="Teléfono">
+                            <input
+                                value={form.telefono}
+                                onChange={(e) => cambiar('telefono', e.target.value)}
+                                className={inputCls}
+                            />
+                        </Campo>
+                    </div>
+                    <Campo label="Email">
+                        <input
+                            type="email"
+                            value={form.email}
+                            onChange={(e) => cambiar('email', e.target.value)}
+                            className={inputCls}
+                        />
+                    </Campo>
+                    <Campo label="Dirección">
+                        <input
+                            value={form.direccion}
+                            onChange={(e) => cambiar('direccion', e.target.value)}
+                            className={inputCls}
+                        />
+                    </Campo>
+                    <Campo label="Notas">
+                        <textarea
+                            rows={2}
+                            value={form.notas}
+                            onChange={(e) => cambiar('notas', e.target.value)}
+                            className={inputCls}
+                        />
+                    </Campo>
+
+                    {errorForm && (
+                        <p className="text-red-500 text-xs mb-3">{errorForm}</p>
+                    )}
+
+                    <div className="flex justify-end gap-2">
+                        <BotonSecundario
+                            type="button"
+                            onClick={() => setModal({ abierto: false, id: null })}
+                        >
+                            Cancelar
+                        </BotonSecundario>
+                        <BotonPrimario type="submit" disabled={guardando}>
+                            {guardando ? 'Guardando…' : 'Guardar'}
+                        </BotonPrimario>
+                    </div>
+                </form>
+            </Modal>
         </AppLayout>
     )
 }

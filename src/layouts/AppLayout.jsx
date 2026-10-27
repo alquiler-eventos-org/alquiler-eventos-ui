@@ -12,7 +12,7 @@ const menuItems = [
     { nombre: 'Órdenes de Compra', ruta: '/ordenes-compra', roles: ROLES.compras },
     { nombre: 'Proveedores', ruta: '/proveedores', roles: ROLES.compras },
     { nombre: 'Usuarios', ruta: '/usuarios', roles: ROLES.seguridad },
-    { nombre: 'Reportes', ruta: '/reportes' },
+    { nombre: 'Reportes', ruta: '/reportes', roles: ROLES.alquiler },
     { nombre: 'Configuración', ruta: '/configuracion' },
 ]
 

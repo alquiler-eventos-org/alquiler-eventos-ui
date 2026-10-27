@@ -1,11 +1,26 @@
 import { useEffect, useState } from 'react'
 import AppLayout from '../layouts/AppLayout'
-import { Badge, Modal, Paginacion, filtroCls } from '../components/UI'
+import {
+    Badge,
+    BotonPrimario,
+    BotonSecundario,
+    Campo,
+    Modal,
+    Paginacion,
+    filtroCls,
+    inputCls,
+} from '../components/UI'
+import LineasEditor from '../components/LineasEditor'
+import { LINEA_VACIA, lineasADetalles } from '../utils/lineas'
+import { useConsulta } from '../hooks/useConsulta'
+import { listarClientes } from '../api/clientes'
+import { listarEquipos } from '../api/equipos'
 import { formatoGs } from '../utils/formato'
 import { mensajeDeError, normalizarPagina } from '../api/client'
 import {
     TRANSICIONES,
     cambiarEstadoOrdenAlquiler,
+    crearOrdenAlquiler,
     listarOrdenesAlquiler,
 } from '../api/ordenesAlquiler'
 
@@ -30,6 +45,15 @@ export default function OrdenesAlquiler() {
     const [detalle, setDetalle] = useState(null)
     const [errorAccion, setErrorAccion] = useState('')
     const [guardando, setGuardando] = useState(false)
+
+    // Alta de orden: cliente, fechas y líneas de equipos
+    const [nueva, setNueva] = useState(null)
+    const [errorNueva, setErrorNueva] = useState('')
+    const { datos: clientesDatos } = useConsulta(() => listarClientes({ page: 0, size: 100 }), [])
+    const { datos: equiposDatos } = useConsulta(() => listarEquipos({}), [])
+    const clientes = clientesDatos ? normalizarPagina(clientesDatos).contenido : []
+    // Si GET /equipos no está disponible, el editor pide el ID a mano.
+    const equipos = equiposDatos ? normalizarPagina(equiposDatos).contenido : null
 
     // La "clave" identifica la consulta actual; mientras los datos guardados no
     // correspondan a ella, la pantalla está cargando.
@@ -77,6 +101,41 @@ export default function OrdenesAlquiler() {
         }
     }
 
+    function abrirNueva() {
+        setErrorNueva('')
+        setNueva({ clienteId: '', fechaEvento: '', fechaDevolucion: '', lineas: [{ ...LINEA_VACIA }] })
+    }
+
+    async function guardarNueva(e) {
+        e.preventDefault()
+        const detalles = lineasADetalles(nueva.lineas)
+        if (!nueva.clienteId || !nueva.fechaEvento) {
+            setErrorNueva('Elegí el cliente y la fecha del evento.')
+            return
+        }
+        if (detalles.length === 0 || detalles.some((d) => !(d.cantidad >= 1))) {
+            setErrorNueva('Agregá al menos un equipo con cantidad válida.')
+            return
+        }
+        setGuardando(true)
+        setErrorNueva('')
+        try {
+            await crearOrdenAlquiler({
+                clienteId: Number(nueva.clienteId),
+                fechaEvento: nueva.fechaEvento,
+                fechaDevolucion: nueva.fechaDevolucion || null,
+                detalles,
+            })
+            setNueva(null)
+            setPagina(0)
+            setRecarga((n) => n + 1)
+        } catch (err) {
+            setErrorNueva(mensajeDeError(err, 'No se pudo crear la orden'))
+        } finally {
+            setGuardando(false)
+        }
+    }
+
     const totalPaginas = Math.max(1, Math.ceil(datos.total / TAMANO_PAGINA))
     const acciones = detalle ? (TRANSICIONES[detalle.estado] ?? []) : []
 
@@ -96,6 +155,7 @@ export default function OrdenesAlquiler() {
                             <option key={f} value={f}>{f}</option>
                         ))}
                     </select>
+                    <BotonPrimario onClick={abrirNueva}>+ Nueva orden</BotonPrimario>
                 </div>
             </div>
 
@@ -150,6 +210,67 @@ export default function OrdenesAlquiler() {
             </div>
 
             <Paginacion pagina={pagina} totalPaginas={totalPaginas} onCambiar={setPagina} />
+
+            <Modal
+                abierto={!!nueva}
+                titulo="Nueva orden de alquiler"
+                onCerrar={() => setNueva(null)}
+                ancho="max-w-xl"
+            >
+                {nueva && (
+                    <form onSubmit={guardarNueva}>
+                        <Campo label="Cliente *">
+                            <select
+                                value={nueva.clienteId}
+                                onChange={(e) => setNueva({ ...nueva, clienteId: e.target.value })}
+                                className={inputCls}
+                            >
+                                <option value="">Elegir cliente…</option>
+                                {clientes.map((c) => (
+                                    <option key={c.id} value={c.id}>
+                                        {c.nombre} {c.apellido} — {c.documento}
+                                    </option>
+                                ))}
+                            </select>
+                        </Campo>
+                        <div className="grid grid-cols-2 gap-x-4">
+                            <Campo label="Fecha del evento *">
+                                <input
+                                    type="date"
+                                    value={nueva.fechaEvento}
+                                    onChange={(e) => setNueva({ ...nueva, fechaEvento: e.target.value })}
+                                    className={inputCls}
+                                />
+                            </Campo>
+                            <Campo label="Devolución">
+                                <input
+                                    type="date"
+                                    value={nueva.fechaDevolucion}
+                                    onChange={(e) => setNueva({ ...nueva, fechaDevolucion: e.target.value })}
+                                    className={inputCls}
+                                />
+                            </Campo>
+                        </div>
+                        <LineasEditor
+                            lineas={nueva.lineas}
+                            onChange={(lineas) => setNueva({ ...nueva, lineas })}
+                            equipos={equipos}
+                        />
+                        <p className="text-xs text-gray-400 mb-4">
+                            Los días, subtotales y el total los calcula el servidor. La orden nace en estado RESERVA.
+                        </p>
+                        {errorNueva && <p className="text-red-500 text-xs mb-3">{errorNueva}</p>}
+                        <div className="flex justify-end gap-2">
+                            <BotonSecundario type="button" onClick={() => setNueva(null)}>
+                                Cancelar
+                            </BotonSecundario>
+                            <BotonPrimario type="submit" disabled={guardando}>
+                                {guardando ? 'Guardando…' : 'Crear orden'}
+                            </BotonPrimario>
+                        </div>
+                    </form>
+                )}
+            </Modal>
 
             <Modal
                 abierto={!!detalle}

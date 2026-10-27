@@ -11,6 +11,12 @@ export function listarOrdenesAlquiler({ page = 0, size = 6, estado } = {}) {
     return apiAlquiler.get('/ordenes-alquiler/buscar', { params })
 }
 
+// Alta: { clienteId, fechaEvento, fechaDevolucion, detalles: [{ equipoId, cantidad }] }.
+// El servidor calcula días, subtotales y total, y toma el usuario del JWT.
+export function crearOrdenAlquiler(request) {
+    return apiAlquiler.post('/ordenes-alquiler', request)
+}
+
 export function obtenerOrdenAlquiler(id) {
     return apiAlquiler.get(`/ordenes-alquiler/${id}`)
 }
