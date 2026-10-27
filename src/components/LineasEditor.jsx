@@ -1,5 +1,6 @@
 import { inputCls } from './UI'
 import { LINEA_VACIA } from '../utils/lineas'
+import MontoInput from './MontoInput'
 
 // Editor de líneas de una orden (equipo + cantidad [+ costo unitario]).
 // Helpers en utils/lineas.js (LINEA_VACIA, lineasADetalles).
@@ -28,12 +29,19 @@ export default function LineasEditor({ lineas, onChange, equipos, conCosto = fal
             </div>
             <div className="space-y-2">
                 {lineas.map((l, i) => (
-                    <div key={i} className="flex items-center gap-2">
+                    <div
+                        key={i}
+                        className={`grid items-center gap-2 ${
+                            conCosto
+                                ? 'grid-cols-[minmax(0,1fr)_5rem_8rem_auto]'
+                                : 'grid-cols-[minmax(0,1fr)_5rem_auto]'
+                        }`}
+                    >
                         {equipos ? (
                             <select
                                 value={l.equipoId}
                                 onChange={(e) => cambiar(i, 'equipoId', e.target.value)}
-                                className={`${inputCls} flex-1`}
+                                className={`${inputCls} min-w-0`}
                             >
                                 <option value="">Elegir equipo…</option>
                                 {equipos.map((eq) => (
@@ -48,7 +56,7 @@ export default function LineasEditor({ lineas, onChange, equipos, conCosto = fal
                                 min="1"
                                 value={l.equipoId}
                                 onChange={(e) => cambiar(i, 'equipoId', e.target.value)}
-                                className={`${inputCls} flex-1`}
+                                className={`${inputCls} min-w-0`}
                                 placeholder="ID del equipo"
                             />
                         )}
@@ -57,17 +65,15 @@ export default function LineasEditor({ lineas, onChange, equipos, conCosto = fal
                             min="1"
                             value={l.cantidad}
                             onChange={(e) => cambiar(i, 'cantidad', e.target.value)}
-                            className={`${inputCls} w-20`}
+                            className={inputCls}
                             title="Cantidad"
                             placeholder="Cant."
                         />
                         {conCosto && (
-                            <input
-                                type="number"
+                            <MontoInput
                                 min="0"
                                 value={l.costoUnitario}
-                                onChange={(e) => cambiar(i, 'costoUnitario', e.target.value)}
-                                className={`${inputCls} w-32`}
+                                onChange={(valor) => cambiar(i, 'costoUnitario', valor)}
                                 title="Costo unitario"
                                 placeholder="Costo unit."
                             />

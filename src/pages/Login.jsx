@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
 import { mensajeDeError } from '../api/client'
+import PasswordInput from '../components/PasswordInput'
 
 export default function Login() {
     const [email, setEmail] = useState('')
@@ -51,12 +52,11 @@ export default function Login() {
                 />
 
                 <label className="block text-xs text-gray-500 mb-1">Contraseña</label>
-                <input
-                    type="password"
+                <PasswordInput
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 mb-4 bg-gray-50 text-sm outline-none focus:border-blue-500"
-                    placeholder="••••••••"
+                    autoComplete="current-password"
+                    className="mb-4"
                 />
 
                 {error && <p className="text-red-500 text-xs mb-3">{error}</p>}

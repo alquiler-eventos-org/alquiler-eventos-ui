@@ -16,6 +16,7 @@ import { mensajeDeError } from '../api/client'
 import { actualizarUsuario, asignarRoles, crearUsuario, desactivarUsuario, listarRoles, listarUsuarios } from '../api/usuarios'
 import { useConsulta } from '../hooks/useConsulta'
 import { useAuth } from '../context/useAuth'
+import PasswordInput from '../components/PasswordInput'
 
 // ====== Pantalla REAL: usuarios y roles de ms-seguridad (solo ADMIN) ======
 // Alta con roles, cambio de roles y baja lógica. La contraseña se guarda con
@@ -102,6 +103,7 @@ export default function Usuarios() {
                     nombre: modal.nombre.trim(),
                     email: modal.email.trim(),
                     password: modal.password,
+                    roles: modal.roles,
                 })
                 await asignarRoles(modal.id, modal.roles)
             } else {
@@ -247,11 +249,9 @@ export default function Usuarios() {
                                     />
                                 </Campo>
                                 <Campo label={modal.id ? 'Nueva contraseña *' : 'Contraseña *'}>
-                                    <input
-                                        type="password"
+                                    <PasswordInput
                                         value={modal.password}
                                         onChange={(e) => setModal({ ...modal, password: e.target.value })}
-                                        className={inputCls}
                                         autoComplete="new-password"
                                     />
                                 </Campo>

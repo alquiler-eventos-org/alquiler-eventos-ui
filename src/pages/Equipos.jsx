@@ -24,6 +24,7 @@ import {
     listarEquipos,
 } from '../api/equipos'
 import { useConsulta } from '../hooks/useConsulta'
+import MontoInput from '../components/MontoInput'
 
 // ====== Pantalla REAL: equipos y stock desde ms-alquiler (GET /equipos) ======
 // CRUD: alta, edición y baja lógica (estado BAJA). El stock también lo mueven las
@@ -283,12 +284,10 @@ export default function Equipos() {
                                 />
                             </Campo>
                             <Campo label="Precio por día (₲) *">
-                                <input
-                                    type="number"
+                                <MontoInput
                                     min="0"
                                     value={form.precioDia}
-                                    onChange={(e) => setForm({ ...form, precioDia: e.target.value })}
-                                    className={inputCls}
+                                    onChange={(valor) => setForm({ ...form, precioDia: valor })}
                                 />
                             </Campo>
                         </div>

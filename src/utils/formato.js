@@ -5,6 +5,17 @@ export function formatoGs(valor) {
     return `₲ ${Number(valor ?? 0).toLocaleString('es-PY')}`
 }
 
+// Para los inputs monetarios se aceptan dígitos y se descartan los puntos
+// visuales; así el valor enviado al backend siempre sigue siendo numérico.
+export function normalizarMontoEntrada(valor) {
+    return String(valor ?? '').replace(/\D/g, '')
+}
+
+export function formatoMontoEntrada(valor) {
+    const limpio = normalizarMontoEntrada(valor)
+    return limpio ? Number(limpio).toLocaleString('es-PY') : ''
+}
+
 // "2026-11-05" -> "05/11/2026" (las fechas llegan como ISO y se muestran dd/mm/aaaa)
 export function formatoFecha(iso) {
     if (!iso) return '—'

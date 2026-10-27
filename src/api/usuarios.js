@@ -15,10 +15,10 @@ export function crearUsuario(request) {
     return apiSeguridad.post('/usuarios', request)
 }
 
-// Edición de datos: el backend exige el cuerpo completo { nombre, email, password } y
-// siempre guarda la contraseña que llega (por eso la UI la pide al editar).
-export function actualizarUsuario(id, { nombre, email, password }) {
-    return apiSeguridad.put(`/usuarios/${id}`, { nombre, email, password })
+// El backend valida el cuerpo completo, incluidos los roles actuales.
+// Siempre guarda la contraseña que llega, por eso la UI la pide al editar.
+export function actualizarUsuario(id, { nombre, email, password, roles }) {
+    return apiSeguridad.put(`/usuarios/${id}`, { nombre, email, password, roles })
 }
 
 // { roles: ['ENCARGADO_COMPRAS', ...] }
