@@ -13,7 +13,7 @@ import {
     inputCls,
 } from '../components/UI'
 import { mensajeDeError } from '../api/client'
-import { asignarRoles, crearUsuario, desactivarUsuario, listarRoles, listarUsuarios } from '../api/usuarios'
+import { actualizarUsuario, asignarRoles, crearUsuario, desactivarUsuario, listarRoles, listarUsuarios } from '../api/usuarios'
 import { useConsulta } from '../hooks/useConsulta'
 import { useAuth } from '../context/useAuth'
 
@@ -86,14 +86,23 @@ export default function Usuarios() {
             setErrorForm('Elegí al menos un rol.')
             return
         }
-        if (!modal.id && (!modal.nombre.trim() || !modal.email.trim() || !modal.password)) {
-            setErrorForm('Nombre, email y contraseña son obligatorios.')
+        if (!modal.nombre.trim() || !modal.email.trim() || !modal.password) {
+            setErrorForm(
+                modal.id
+                    ? 'Nombre, email y contraseña son obligatorios (al editar se define una contraseña nueva).'
+                    : 'Nombre, email y contraseña son obligatorios.',
+            )
             return
         }
         setGuardando(true)
         setErrorForm('')
         try {
             if (modal.id) {
+                await actualizarUsuario(modal.id, {
+                    nombre: modal.nombre.trim(),
+                    email: modal.email.trim(),
+                    password: modal.password,
+                })
                 await asignarRoles(modal.id, modal.roles)
             } else {
                 await crearUsuario({
@@ -192,7 +201,7 @@ export default function Usuarios() {
                                             onClick={() => abrirRoles(u)}
                                             className="text-blue-600 hover:underline text-xs"
                                         >
-                                            Cambiar roles
+                                            Editar
                                         </button>
                                         {u.email !== user?.email && (
                                             <button
@@ -217,13 +226,11 @@ export default function Usuarios() {
 
             <Modal
                 abierto={!!modal}
-                titulo={modal?.id ? `Roles de ${modal.email}` : 'Nuevo usuario'}
+                titulo={modal?.id ? 'Editar usuario' : 'Nuevo usuario'}
                 onCerrar={() => setModal(null)}
             >
                 {modal && (
                     <form onSubmit={guardar}>
-                        {!modal.id && (
-                            <>
                                 <Campo label="Nombre *">
                                     <input
                                         value={modal.nombre}
@@ -239,7 +246,7 @@ export default function Usuarios() {
                                         className={inputCls}
                                     />
                                 </Campo>
-                                <Campo label="Contraseña *">
+                                <Campo label={modal.id ? 'Nueva contraseña *' : 'Contraseña *'}>
                                     <input
                                         type="password"
                                         value={modal.password}
@@ -248,8 +255,6 @@ export default function Usuarios() {
                                         autoComplete="new-password"
                                     />
                                 </Campo>
-                            </>
-                        )}
                         <div className="mb-4">
                             <span className="block text-xs text-gray-500 mb-2">Roles *</span>
                             {roles.length === 0 && (

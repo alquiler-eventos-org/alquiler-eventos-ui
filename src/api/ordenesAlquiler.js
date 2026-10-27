@@ -17,6 +17,11 @@ export function crearOrdenAlquiler(request) {
     return apiAlquiler.post('/ordenes-alquiler', request)
 }
 
+// Edición: mismo cuerpo que el alta. El backend solo la permite si la orden está en RESERVA.
+export function actualizarOrdenAlquiler(id, request) {
+    return apiAlquiler.put(`/ordenes-alquiler/${id}`, request)
+}
+
 export function obtenerOrdenAlquiler(id) {
     return apiAlquiler.get(`/ordenes-alquiler/${id}`)
 }
