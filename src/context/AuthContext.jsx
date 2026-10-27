@@ -1,20 +1,23 @@
 import { useState } from 'react'
 import { AuthContext } from './auth-context'
+import { iniciarSesion } from '../api/auth'
+import { borrarSesion, guardarSesion, leerSesion, usuarioDesdeToken } from '../api/sesion'
 
 export function AuthProvider({ children }) {
-    const [user, setUser] = useState(() => {
-        const stored = localStorage.getItem('usuario')
-        return stored ? JSON.parse(stored) : null
-    })
+    // Al recargar la página se recupera la sesión si el token sigue vigente.
+    const [user, setUser] = useState(() => leerSesion()?.user ?? null)
 
-    function login(email) {
-        const usuarioSimulado = { email, nombre: 'Admin' }
-        localStorage.setItem('usuario', JSON.stringify(usuarioSimulado))
-        setUser(usuarioSimulado)
+    // Login real contra ms-seguridad. Si falla, la excepción llega al formulario.
+    async function login(email, password) {
+        const { data } = await iniciarSesion(email, password)
+        guardarSesion(data.accessToken)
+        const usuario = usuarioDesdeToken(data.accessToken)
+        setUser(usuario)
+        return usuario
     }
 
     function logout() {
-        localStorage.removeItem('usuario')
+        borrarSesion()
         setUser(null)
     }
 

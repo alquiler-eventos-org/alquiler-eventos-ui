@@ -1,9 +1,21 @@
 import { useState } from 'react'
 import AppLayout from '../layouts/AppLayout'
+import { useAuth } from '../context/useAuth'
 
-// ====== PANTALLA ESTÁTICA: Configuraciones (admin) — según Figma "08 - Configuraciones" ======
-// Solo UI con campos de maqueta; nada se guarda todavía. Al conectar los
-// microservicios, estos valores irán al backend correspondiente.
+// ====== Configuraciones — según Figma "08 - Configuraciones" ======
+// Los parámetros se guardan en ESTE navegador (localStorage): el backend no
+// tiene todavía un endpoint de configuración. La tarjeta de sesión sí muestra
+// datos reales leídos del JWT del usuario.
+
+const CLAVE = 'configuracion-sistema'
+
+function leerConfig() {
+    try {
+        return JSON.parse(localStorage.getItem(CLAVE)) ?? {}
+    } catch {
+        return {}
+    }
+}
 
 // Fila de configuración: título + descripción a la izquierda, control a la derecha.
 // En desktop la columna del control empieza en una posición fija, como en el Figma.
@@ -24,10 +36,22 @@ const inputCfgCls =
     'w-full sm:w-44 bg-gray-100 rounded-lg px-3.5 py-2.5 text-sm text-gray-700 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/30'
 
 export default function Configuracion() {
-    const [dias, setDias] = useState('')
-    const [tarifa, setTarifa] = useState('')
-    const [categorias, setCategorias] = useState('')
-    const [plantilla, setPlantilla] = useState('')
+    const { user } = useAuth()
+    const [inicial] = useState(leerConfig)
+    const [dias, setDias] = useState(inicial.dias ?? '')
+    const [tarifa, setTarifa] = useState(inicial.tarifa ?? '')
+    const [categorias, setCategorias] = useState(inicial.categorias ?? '')
+    const [plantilla, setPlantilla] = useState(inicial.plantilla ?? '')
+    const [guardado, setGuardado] = useState(false)
+
+    function guardar() {
+        try {
+            localStorage.setItem(CLAVE, JSON.stringify({ dias, tarifa, categorias, plantilla }))
+            setGuardado(true)
+        } catch {
+            setGuardado(false)
+        }
+    }
 
     return (
         <AppLayout>
@@ -37,6 +61,19 @@ export default function Configuracion() {
             </div>
 
             <div className="max-w-3xl space-y-5">
+                <Fila
+                    titulo="Sesión actual"
+                    descripcion="Datos tomados del token JWT emitido por ms-seguridad"
+                >
+                    <div className="text-sm text-gray-700 space-y-1">
+                        <p>{user?.email}</p>
+                        <p className="text-xs text-gray-500">Roles: {user?.roles?.join(', ')}</p>
+                        <p className="text-xs text-gray-500">
+                            El token vence: {user?.exp ? new Date(user.exp * 1000).toLocaleTimeString('es-PY') : '—'}
+                        </p>
+                    </div>
+                </Fila>
+
                 <Fila
                     titulo="Días de anticipación para recordatorio"
                     descripcion="Ej: 2 días antes de la devolución"
@@ -93,9 +130,17 @@ export default function Configuracion() {
                     </div>
                 </Fila>
 
-                <button className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition">
-                    Guardar cambios
-                </button>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={guardar}
+                        className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition"
+                    >
+                        Guardar cambios
+                    </button>
+                    {guardado && (
+                        <span className="text-xs text-green-600">Guardado en este navegador.</span>
+                    )}
+                </div>
             </div>
         </AppLayout>
     )

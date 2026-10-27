@@ -6,6 +6,12 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {
+      // Login y usuarios: ms-seguridad, siempre via el gateway.
+      '/ms/seguridad': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/ms\/seguridad/, '/api'),
+      },
       // Las dos rutas van al API GATEWAY (puerto 8080), que las enruta a
       // ms-compras o ms-alquiler via Eureka. Toda la UI pasa por la puerta
       // unica: igual que en la demo de la rubrica.

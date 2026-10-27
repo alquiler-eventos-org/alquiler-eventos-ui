@@ -1,16 +1,18 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
+import { ROLES, tieneRol } from '../api/sesion'
 
-// Menú lateral. Cada ítem apunta a su ruta real en AppRoutes.
+// Menú lateral. Cada ítem apunta a su ruta real en AppRoutes y solo se muestra
+// si el rol del usuario (claim "roles" del JWT) puede usar ese módulo.
 const menuItems = [
     { nombre: 'Dashboard', ruta: '/dashboard' },
-    { nombre: 'Equipos', ruta: '/equipos' },
-    { nombre: 'Clientes', ruta: '/clientes' },
-    { nombre: 'Órdenes de Alquiler', ruta: '/ordenes-alquiler' },
-    { nombre: 'Órdenes de Compra', ruta: '/ordenes-compra' },
-    { nombre: 'Proveedores', ruta: '/proveedores' },
-    { nombre: 'Usuarios', ruta: '/usuarios' },
-    { nombre: 'Reportes', ruta: '/reportes' },
+    { nombre: 'Equipos', ruta: '/equipos', roles: ROLES.alquiler },
+    { nombre: 'Clientes', ruta: '/clientes', roles: ROLES.alquiler },
+    { nombre: 'Órdenes de Alquiler', ruta: '/ordenes-alquiler', roles: ROLES.alquiler },
+    { nombre: 'Órdenes de Compra', ruta: '/ordenes-compra', roles: ROLES.compras },
+    { nombre: 'Proveedores', ruta: '/proveedores', roles: ROLES.compras },
+    { nombre: 'Usuarios', ruta: '/usuarios', roles: ROLES.seguridad },
+    { nombre: 'Reportes', ruta: '/reportes', roles: ROLES.alquiler },
     { nombre: 'Configuración', ruta: '/configuracion' },
 ]
 
@@ -38,7 +40,7 @@ export default function AppLayout({ children }) {
             <aside className="w-56 bg-[#1f2333] text-white flex flex-col fixed inset-y-0 left-0">
                 <div className="px-6 py-5 font-semibold text-sm">Alquiler Eventos</div>
                 <nav className="flex-1 px-3 overflow-y-auto">
-                    {menuItems.map((item) => (
+                    {menuItems.filter((item) => tieneRol(user, item.roles)).map((item) => (
                         <NavLink
                             key={item.ruta}
                             to={item.ruta}
@@ -63,7 +65,7 @@ export default function AppLayout({ children }) {
                         onClick={handleLogout}
                         className="text-sm text-gray-500 hover:text-gray-800"
                     >
-                        {user?.nombre ?? 'Usuario'} ▾ (Cerrar sesión)
+                        {user?.email ?? 'Usuario'} · {user?.roles?.join(', ')} ▾ (Cerrar sesión)
                     </button>
                 </header>
 
