@@ -199,7 +199,7 @@ export default function Proveedores() {
 
             <Modal
                 abierto={modal.abierto}
-                titulo={modal.id ? `Editar proveedor #${modal.id}` : 'Nuevo proveedor'}
+                titulo={modal.id ? 'Editar proveedor' : 'Nuevo proveedor'}
                 onCerrar={() => setModal({ abierto: false, id: null })}
             >
                 <form onSubmit={guardar}>

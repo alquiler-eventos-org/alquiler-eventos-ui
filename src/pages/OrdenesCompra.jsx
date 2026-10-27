@@ -15,7 +15,7 @@ import {
 } from '../components/UI'
 import LineasEditor from '../components/LineasEditor'
 import { LINEA_VACIA, lineasADetalles } from '../utils/lineas'
-import { formatoGs } from '../utils/formato'
+import { formatoFecha, formatoGs, resumenEquipos } from '../utils/formato'
 import { mensajeDeError, normalizarPagina } from '../api/client'
 import { useConsulta } from '../hooks/useConsulta'
 import { listarProveedores } from '../api/proveedores'
@@ -30,6 +30,7 @@ import {
 // Estados: PENDIENTE -> CONFIRMADA -> RECIBIDA, y PENDIENTE -> ANULADA.
 
 const TAMANO_PAGINA = 6
+const MAX_CARGA = 200
 const filtros = ['Todas', 'PENDIENTE', 'CONFIRMADA', 'RECIBIDA', 'ANULADA']
 
 const TRANSICIONES = {
@@ -48,6 +49,7 @@ const textoAccion = {
 export default function OrdenesCompra() {
     const [pagina, setPagina] = useState(0)
     const [filtro, setFiltro] = useState('Todas')
+    const [busqueda, setBusqueda] = useState('')
     const [detalle, setDetalle] = useState(null)
     const [errorAccion, setErrorAccion] = useState('')
     const [guardando, setGuardando] = useState(false)
@@ -58,14 +60,13 @@ export default function OrdenesCompra() {
     const { datos, error, cargando, recargar } = useConsulta(
         () =>
             listarOrdenesCompra({
-                page: pagina,
-                size: TAMANO_PAGINA,
+                page: 0,
+                size: MAX_CARGA,
                 filtros: estado ? { estado } : {},
             }),
-        [pagina, filtro],
+        [filtro],
     )
-    const p = datos ? normalizarPagina(datos, pagina, TAMANO_PAGINA) : null
-    const totalPaginas = Math.max(1, Math.ceil((p?.totalElementos ?? 0) / TAMANO_PAGINA))
+    const p = datos ? normalizarPagina(datos, 0, MAX_CARGA) : null
 
     // Nombres: la orden trae proveedorId / equipoId; se resuelven con estas listas.
     const { datos: proveedoresDatos } = useConsulta(
@@ -79,11 +80,20 @@ export default function OrdenesCompra() {
     const nombreProveedor = (o) =>
         o.proveedorNombre ??
         proveedores.find((pr) => pr.id === o.proveedorId)?.nombre ??
-        `Proveedor #${o.proveedorId}`
+        'Proveedor'
     const nombreEquipo = (l) =>
         l.equipoNombre ??
         equipos?.find((eq) => eq.id === l.equipoId)?.nombre ??
-        `Equipo #${l.equipoId}`
+        'Equipo'
+
+    const filtradas = (p?.contenido ?? []).filter((o) =>
+        `${nombreProveedor(o)} ${o.estado} ${(o.detalles ?? []).map(nombreEquipo).join(' ')}`
+            .toLowerCase()
+            .includes(busqueda.toLowerCase()),
+    )
+    const totalPaginas = Math.max(1, Math.ceil(filtradas.length / TAMANO_PAGINA))
+    const paginaActual = Math.min(pagina, totalPaginas - 1)
+    const visibles = filtradas.slice(paginaActual * TAMANO_PAGINA, (paginaActual + 1) * TAMANO_PAGINA)
 
     function cambiarFiltro(nuevo) {
         setFiltro(nuevo)
@@ -96,7 +106,7 @@ export default function OrdenesCompra() {
     }
 
     async function cambiarEstado(orden, nuevoEstado) {
-        if (!window.confirm(`¿Pasar la orden de compra #${orden.id} a ${nuevoEstado}?`)) return
+        if (!window.confirm(`¿Pasar la orden de ${nombreProveedor(orden)} a ${nuevoEstado}?`)) return
         setGuardando(true)
         setErrorAccion('')
         try {
@@ -157,9 +167,18 @@ export default function OrdenesCompra() {
         <AppLayout titulo="Órdenes de Compra">
             <div className="flex items-center justify-between mb-6">
                 <p className="text-xs text-gray-400">
-                    {cargando ? 'Cargando…' : `${p?.totalElementos ?? 0} órdenes`}
+                    {cargando ? 'Cargando…' : `${filtradas.length} órdenes`}
                 </p>
                 <div className="flex items-center gap-2">
+                    <input
+                        value={busqueda}
+                        onChange={(e) => {
+                            setBusqueda(e.target.value)
+                            setPagina(0)
+                        }}
+                        className={filtroCls}
+                        placeholder="Buscar por proveedor o equipo…"
+                    />
                     <select
                         value={filtro}
                         onChange={(e) => cambiarFiltro(e.target.value)}
@@ -186,8 +205,8 @@ export default function OrdenesCompra() {
                     <table className="w-full text-sm">
                         <thead>
                             <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
-                                <th className="px-4 py-3 font-medium">Orden</th>
                                 <th className="px-4 py-3 font-medium">Proveedor</th>
+                                <th className="px-4 py-3 font-medium">Equipos</th>
                                 <th className="px-4 py-3 font-medium">Fecha</th>
                                 <th className="px-4 py-3 font-medium">Estado</th>
                                 <th className="px-4 py-3 font-medium">Total</th>
@@ -195,14 +214,14 @@ export default function OrdenesCompra() {
                             </tr>
                         </thead>
                         <tbody>
-                            {(p?.contenido ?? []).map((o) => (
+                            {visibles.map((o) => (
                                 <tr
                                     key={o.id}
                                     className="border-b border-gray-50 last:border-0 hover:bg-gray-50"
                                 >
-                                    <td className="px-4 py-3 text-gray-400">#OC-{o.id}</td>
                                     <td className="px-4 py-3 text-gray-700">{nombreProveedor(o)}</td>
-                                    <td className="px-4 py-3 text-gray-700">{o.fechaCompra}</td>
+                                    <td className="px-4 py-3 text-gray-500">{resumenEquipos((o.detalles ?? []).map((l) => ({ nombre: nombreEquipo(l), cantidad: l.cantidad })))}</td>
+                                    <td className="px-4 py-3 text-gray-700">{formatoFecha(o.fechaCompra)}</td>
                                     <td className="px-4 py-3">
                                         <Badge estado={o.estado} />
                                     </td>
@@ -220,8 +239,8 @@ export default function OrdenesCompra() {
                         </tbody>
                     </table>
                 )}
-                {!cargando && !error && (p?.contenido ?? []).length === 0 && (
-                    <SinDatos mensaje="No hay órdenes que coincidan con el filtro." />
+                {!cargando && !error && filtradas.length === 0 && (
+                    <SinDatos mensaje="No hay órdenes que coincidan con la búsqueda." />
                 )}
             </div>
 
@@ -279,7 +298,7 @@ export default function OrdenesCompra() {
 
             <Modal
                 abierto={!!detalle}
-                titulo={`Detalle de orden #OC-${detalle?.id ?? ''}`}
+                titulo={`Orden de ${detalle ? nombreProveedor(detalle) : ''}`}
                 onCerrar={() => setDetalle(null)}
                 ancho="max-w-2xl"
             >
@@ -292,7 +311,7 @@ export default function OrdenesCompra() {
                             </div>
                             <div>
                                 <p className="text-xs text-gray-400">Fecha de compra</p>
-                                <p className="text-gray-900 font-medium">{detalle.fechaCompra}</p>
+                                <p className="text-gray-900 font-medium">{formatoFecha(detalle.fechaCompra)}</p>
                             </div>
                             <div>
                                 <p className="text-xs text-gray-400">Estado</p>

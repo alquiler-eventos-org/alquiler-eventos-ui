@@ -15,7 +15,7 @@ import { LINEA_VACIA, lineasADetalles } from '../utils/lineas'
 import { useConsulta } from '../hooks/useConsulta'
 import { listarClientes } from '../api/clientes'
 import { listarEquipos } from '../api/equipos'
-import { formatoGs } from '../utils/formato'
+import { formatoFecha, formatoGs, resumenEquipos } from '../utils/formato'
 import { mensajeDeError, normalizarPagina } from '../api/client'
 import {
     TRANSICIONES,
@@ -25,9 +25,11 @@ import {
 } from '../api/ordenesAlquiler'
 
 // ====== Pantalla REAL: órdenes de alquiler desde ms-alquiler via el API Gateway ======
-// Paginación y filtro por estado se hacen en el servidor.
+// El filtro por estado se hace en el servidor; la búsqueda por cliente/equipo y la
+// paginación se hacen en el cliente sobre las órdenes cargadas (hasta 200).
 
 const TAMANO_PAGINA = 6
+const MAX_CARGA = 200
 const filtros = ['Todas', 'RESERVA', 'ENTREGA', 'DEVOLUCION', 'MORA', 'ANULADA']
 
 const textoAccion = {
@@ -40,6 +42,7 @@ const textoAccion = {
 export default function OrdenesAlquiler() {
     const [pagina, setPagina] = useState(0)
     const [filtro, setFiltro] = useState('Todas')
+    const [busqueda, setBusqueda] = useState('')
     const [recarga, setRecarga] = useState(0)
     const [datos, setDatos] = useState({ clave: null, contenido: [], total: 0, error: '' })
     const [detalle, setDetalle] = useState(null)
@@ -57,15 +60,15 @@ export default function OrdenesAlquiler() {
 
     // La "clave" identifica la consulta actual; mientras los datos guardados no
     // correspondan a ella, la pantalla está cargando.
-    const clave = `${pagina}|${filtro}|${recarga}`
+    const clave = `${filtro}|${recarga}`
     const cargando = datos.clave !== clave
 
     useEffect(() => {
         let activo = true
         const estado = filtro === 'Todas' ? undefined : filtro
-        listarOrdenesAlquiler({ page: pagina, size: TAMANO_PAGINA, estado })
+        listarOrdenesAlquiler({ page: 0, size: MAX_CARGA, estado })
             .then((resp) => {
-                const p = normalizarPagina(resp.data, pagina, TAMANO_PAGINA)
+                const p = normalizarPagina(resp.data, 0, MAX_CARGA)
                 if (activo) setDatos({ clave, contenido: p.contenido, total: p.totalElementos, error: '' })
             })
             .catch((err) => {
@@ -74,7 +77,16 @@ export default function OrdenesAlquiler() {
         return () => {
             activo = false
         }
-    }, [clave, pagina, filtro])
+    }, [clave, filtro])
+
+    const filtradas = datos.contenido.filter((o) =>
+        `${o.clienteNombre} ${o.estado} ${(o.detalles ?? []).map((d) => d.equipoNombre).join(' ')}`
+            .toLowerCase()
+            .includes(busqueda.toLowerCase()),
+    )
+    const totalPaginas = Math.max(1, Math.ceil(filtradas.length / TAMANO_PAGINA))
+    const paginaActual = Math.min(pagina, totalPaginas - 1)
+    const visibles = filtradas.slice(paginaActual * TAMANO_PAGINA, (paginaActual + 1) * TAMANO_PAGINA)
 
     function cambiarFiltro(nuevo) {
         setFiltro(nuevo)
@@ -87,7 +99,7 @@ export default function OrdenesAlquiler() {
     }
 
     async function cambiarEstado(orden, nuevoEstado) {
-        if (!window.confirm(`¿Pasar la orden #${orden.id} a ${nuevoEstado}?`)) return
+        if (!window.confirm(`¿Pasar la orden de ${orden.clienteNombre} a ${nuevoEstado}?`)) return
         setGuardando(true)
         setErrorAccion('')
         try {
@@ -128,6 +140,7 @@ export default function OrdenesAlquiler() {
             })
             setNueva(null)
             setPagina(0)
+            setBusqueda('')
             setRecarga((n) => n + 1)
         } catch (err) {
             setErrorNueva(mensajeDeError(err, 'No se pudo crear la orden'))
@@ -136,16 +149,24 @@ export default function OrdenesAlquiler() {
         }
     }
 
-    const totalPaginas = Math.max(1, Math.ceil(datos.total / TAMANO_PAGINA))
     const acciones = detalle ? (TRANSICIONES[detalle.estado] ?? []) : []
 
     return (
         <AppLayout titulo="Órdenes de Alquiler">
             <div className="flex items-center justify-between mb-6">
                 <p className="text-xs text-gray-400">
-                    {cargando ? 'Cargando…' : `${datos.total} órdenes (datos reales via gateway)`}
+                    {cargando ? 'Cargando…' : `${filtradas.length} órdenes`}
                 </p>
                 <div className="flex items-center gap-2">
+                    <input
+                        value={busqueda}
+                        onChange={(e) => {
+                            setBusqueda(e.target.value)
+                            setPagina(0)
+                        }}
+                        className={filtroCls}
+                        placeholder="Buscar por cliente o equipo…"
+                    />
                     <select
                         value={filtro}
                         onChange={(e) => cambiarFiltro(e.target.value)}
@@ -169,7 +190,7 @@ export default function OrdenesAlquiler() {
                 <table className="w-full text-sm">
                     <thead>
                         <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
-                            <th className="px-4 py-3 font-medium">Orden</th>
+                            <th className="px-4 py-3 font-medium">Equipos</th>
                             <th className="px-4 py-3 font-medium">Cliente</th>
                             <th className="px-4 py-3 font-medium">Fecha del evento</th>
                             <th className="px-4 py-3 font-medium">Devolución</th>
@@ -180,12 +201,12 @@ export default function OrdenesAlquiler() {
                     </thead>
                     <tbody>
                         {!cargando &&
-                            datos.contenido.map((o) => (
+                            visibles.map((o) => (
                                 <tr key={o.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
-                                    <td className="px-4 py-3 text-gray-400">#{o.id}</td>
                                     <td className="px-4 py-3 text-gray-700">{o.clienteNombre}</td>
-                                    <td className="px-4 py-3 text-gray-700">{o.fechaEvento}</td>
-                                    <td className="px-4 py-3 text-gray-700">{o.fechaDevolucion ?? '—'}</td>
+                                    <td className="px-4 py-3 text-gray-500">{resumenEquipos((o.detalles ?? []).map((d) => ({ nombre: d.equipoNombre, cantidad: d.cantidad })))}</td>
+                                    <td className="px-4 py-3 text-gray-700">{formatoFecha(o.fechaEvento)}</td>
+                                    <td className="px-4 py-3 text-gray-700">{formatoFecha(o.fechaDevolucion)}</td>
                                     <td className="px-4 py-3">
                                         <Badge estado={o.estado} />
                                     </td>
@@ -202,14 +223,14 @@ export default function OrdenesAlquiler() {
                             ))}
                     </tbody>
                 </table>
-                {!cargando && !datos.error && datos.contenido.length === 0 && (
+                {!cargando && !datos.error && filtradas.length === 0 && (
                     <p className="text-sm text-gray-400 text-center py-8">
-                        No hay órdenes que coincidan con el filtro.
+                        No hay órdenes que coincidan con la búsqueda.
                     </p>
                 )}
             </div>
 
-            <Paginacion pagina={pagina} totalPaginas={totalPaginas} onCambiar={setPagina} />
+            <Paginacion pagina={paginaActual} totalPaginas={totalPaginas} onCambiar={setPagina} />
 
             <Modal
                 abierto={!!nueva}
@@ -274,7 +295,7 @@ export default function OrdenesAlquiler() {
 
             <Modal
                 abierto={!!detalle}
-                titulo={`Detalle de orden #${detalle?.id ?? ''}`}
+                titulo={`Orden de ${detalle?.clienteNombre ?? ''}`}
                 onCerrar={() => setDetalle(null)}
                 ancho="max-w-2xl"
             >
@@ -291,11 +312,11 @@ export default function OrdenesAlquiler() {
                             </div>
                             <div>
                                 <p className="text-xs text-gray-400">Fecha del evento</p>
-                                <p className="text-gray-900 font-medium">{detalle.fechaEvento}</p>
+                                <p className="text-gray-900 font-medium">{formatoFecha(detalle.fechaEvento)}</p>
                             </div>
                             <div>
                                 <p className="text-xs text-gray-400">Devolución</p>
-                                <p className="text-gray-900 font-medium">{detalle.fechaDevolucion ?? '—'}</p>
+                                <p className="text-gray-900 font-medium">{formatoFecha(detalle.fechaDevolucion)}</p>
                             </div>
                         </div>
 

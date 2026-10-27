@@ -45,8 +45,8 @@ export default function Equipos() {
 
     function exportar() {
         descargarCsv('equipos.csv', [
-            ['Código', 'Nombre', 'Categoría', 'Stock', 'Precio/día', 'Estado'],
-            ...filtrados.map((e) => [`EQ-${String(e.id).padStart(3, '0')}`, e.nombre, e.categoria, e.stock, e.precioDia, e.estado]),
+            ['Nombre', 'Categoría', 'Stock', 'Precio/día', 'Estado'],
+            ...filtrados.map((e) => [e.nombre, e.categoria, e.stock, e.precioDia, e.estado]),
         ])
     }
 
@@ -97,7 +97,6 @@ export default function Equipos() {
                     <table className="w-full text-sm">
                         <thead>
                             <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
-                                <th className="px-4 py-3 font-medium">Código</th>
                                 <th className="px-4 py-3 font-medium">Nombre</th>
                                 <th className="px-4 py-3 font-medium">Categoría</th>
                                 <th className="px-4 py-3 font-medium">Stock</th>
@@ -112,9 +111,6 @@ export default function Equipos() {
                                     key={eq.id}
                                     className="border-b border-gray-50 last:border-0 hover:bg-gray-50"
                                 >
-                                    <td className="px-4 py-3 text-gray-400">
-                                        EQ-{String(eq.id).padStart(3, '0')}
-                                    </td>
                                     <td className="px-4 py-3 text-gray-700">{eq.nombre}</td>
                                     <td className="px-4 py-3 text-gray-700">{eq.categoria}</td>
                                     <td className="px-4 py-3">
@@ -161,7 +157,7 @@ export default function Equipos() {
 
             <Modal
                 abierto={!!detalle}
-                titulo={`Equipo EQ-${String(detalle?.id ?? 0).padStart(3, '0')}`}
+                titulo="Detalle del equipo"
                 onCerrar={() => setDetalle(null)}
             >
                 {detalle && (

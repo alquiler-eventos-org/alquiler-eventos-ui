@@ -1,6 +1,6 @@
 import AppLayout from '../layouts/AppLayout'
 import { Badge, Cargando } from '../components/UI'
-import { formatoGs } from '../utils/formato'
+import { formatoFecha, formatoGs } from '../utils/formato'
 import { useConsulta } from '../hooks/useConsulta'
 import { useAuth } from '../context/useAuth'
 import { ROLES, tieneRol } from '../api/sesion'
@@ -76,8 +76,7 @@ export default function Dashboard() {
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
-                                    <th className="py-2 font-medium">Orden</th>
-                                    <th className="py-2 font-medium">Cliente</th>
+                                                                        <th className="py-2 font-medium">Cliente</th>
                                     <th className="py-2 font-medium">Evento</th>
                                     <th className="py-2 font-medium">Estado</th>
                                     <th className="py-2 font-medium">Total</th>
@@ -86,9 +85,8 @@ export default function Dashboard() {
                             <tbody>
                                 {recientes.map((o) => (
                                     <tr key={o.id} className="border-b border-gray-50 last:border-0">
-                                        <td className="py-3 text-gray-700">#{o.id}</td>
-                                        <td className="py-3 text-gray-700">{o.clienteNombre}</td>
-                                        <td className="py-3 text-gray-700">{o.fechaEvento}</td>
+                                                                                <td className="py-3 text-gray-700">{o.clienteNombre}</td>
+                                        <td className="py-3 text-gray-700">{formatoFecha(o.fechaEvento)}</td>
                                         <td className="py-3">
                                             <Badge estado={o.estado} />
                                         </td>

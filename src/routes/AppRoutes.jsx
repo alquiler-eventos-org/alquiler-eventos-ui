@@ -12,6 +12,7 @@ import Reportes from '../pages/Reportes'
 import Configuracion from '../pages/Configuracion'
 import { useAuth } from '../context/useAuth'
 import { ROLES, tieneRol } from '../api/sesion'
+import { ErrorServidor, NoEncontrada } from '../pages/Errores'
 
 function SinPermisos() {
     return (
@@ -64,7 +65,8 @@ export default function AppRoutes() {
             <Route path="/usuarios" element={protegida(<Usuarios />, ROLES.seguridad)} />
             <Route path="/reportes" element={protegida(<Reportes />, ROLES.alquiler)} />
             <Route path="/configuracion" element={protegida(<Configuracion />)} />
-            <Route path="*" element={<Navigate to="/login" replace />} />
+            <Route path="/error" element={<ErrorServidor onReintentar={() => window.location.assign('/')} />} />
+            <Route path="*" element={<NoEncontrada />} />
         </Routes>
     )
 }

@@ -204,7 +204,7 @@ export default function Clientes() {
 
             <Modal
                 abierto={modal.abierto}
-                titulo={modal.id ? `Editar cliente #${modal.id}` : 'Nuevo cliente'}
+                titulo={modal.id ? 'Editar cliente' : 'Nuevo cliente'}
                 onCerrar={() => setModal({ abierto: false, id: null })}
             >
                 <form onSubmit={guardar}>

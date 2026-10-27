@@ -7,6 +7,7 @@ import {
     Cargando,
     ErrorBanner,
     Modal,
+    Paginacion,
     SinDatos,
     filtroCls,
     inputCls,
@@ -36,7 +37,10 @@ function ChipRol({ rol }) {
     )
 }
 
+const TAMANO_PAGINA = 8
+
 export default function Usuarios() {
+    const [pagina, setPagina] = useState(0)
     const { user } = useAuth()
     const [busqueda, setBusqueda] = useState('')
     const [modal, setModal] = useState(null) // { id|null, nombre, email, password, roles:Set }
@@ -54,6 +58,10 @@ export default function Usuarios() {
             .toLowerCase()
             .includes(busqueda.toLowerCase()),
     )
+
+    const totalPaginas = Math.max(1, Math.ceil(filtrados.length / TAMANO_PAGINA))
+    const paginaActual = Math.min(pagina, totalPaginas - 1)
+    const visibles = filtrados.slice(paginaActual * TAMANO_PAGINA, (paginaActual + 1) * TAMANO_PAGINA)
 
     function abrirNuevo() {
         setErrorForm('')
@@ -124,7 +132,10 @@ export default function Usuarios() {
                 <div className="flex items-center gap-2">
                     <input
                         value={busqueda}
-                        onChange={(e) => setBusqueda(e.target.value)}
+                        onChange={(e) => {
+                            setBusqueda(e.target.value)
+                            setPagina(0)
+                        }}
                         className={filtroCls}
                         placeholder="Buscar usuario…"
                     />
@@ -153,7 +164,7 @@ export default function Usuarios() {
                             </tr>
                         </thead>
                         <tbody>
-                            {filtrados.map((u) => (
+                            {visibles.map((u) => (
                                 <tr
                                     key={u.id}
                                     className="border-b border-gray-50 last:border-0 hover:bg-gray-50"
@@ -201,6 +212,8 @@ export default function Usuarios() {
                     <SinDatos mensaje="No hay usuarios que coincidan con la búsqueda." />
                 )}
             </div>
+
+            <Paginacion pagina={paginaActual} totalPaginas={totalPaginas} onCambiar={setPagina} />
 
             <Modal
                 abierto={!!modal}
