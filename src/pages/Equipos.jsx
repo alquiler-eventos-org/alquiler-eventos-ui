@@ -2,23 +2,32 @@ import { useState } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import {
     Badge,
+    BotonPrimario,
     BotonSecundario,
+    Campo,
     Cargando,
     ErrorBanner,
     Modal,
     Paginacion,
     SinDatos,
     filtroCls,
+    inputCls,
 } from '../components/UI'
 import { formatoGs } from '../utils/formato'
 import { descargarCsv } from '../utils/csv'
-import { normalizarPagina } from '../api/client'
-import { listarEquipos } from '../api/equipos'
+import { mensajeDeError, normalizarPagina } from '../api/client'
+import {
+    actualizarEquipo,
+    crearEquipo,
+    darDeBajaEquipo,
+    listarCategorias,
+    listarEquipos,
+} from '../api/equipos'
 import { useConsulta } from '../hooks/useConsulta'
 
 // ====== Pantalla REAL: equipos y stock desde ms-alquiler (GET /equipos) ======
-// Solo lectura: el stock lo mueven las órdenes de alquiler (ENTREGA descuenta,
-// DEVOLUCION devuelve) y las de compra. El filtro y la paginación se hacen en
+// CRUD: alta, edición y baja lógica (estado BAJA). El stock también lo mueven las
+// órdenes de alquiler (ENTREGA descuenta, DEVOLUCION devuelve) y las de compra. El filtro y la paginación se hacen en
 // el navegador porque el inventario es chico (se piden hasta 200 equipos).
 
 const TAMANO_PAGINA = 8
@@ -29,9 +38,15 @@ export default function Equipos() {
     const [busqueda, setBusqueda] = useState('')
     const [categoria, setCategoria] = useState('Todas')
     const [detalle, setDetalle] = useState(null)
+    const [form, setForm] = useState(null) // { id|null, nombre, categoriaId, stock, precioDia, estado }
+    const [errorForm, setErrorForm] = useState('')
+    const [errorAccion, setErrorAccion] = useState('')
+    const [guardando, setGuardando] = useState(false)
 
     const { datos, error, cargando, recargar } = useConsulta(() => listarEquipos({}), [])
     const equipos = datos ? normalizarPagina(datos).contenido : []
+    const { datos: categoriasDatos } = useConsulta(() => listarCategorias(), [])
+    const catalogo = Array.isArray(categoriasDatos) ? categoriasDatos : []
 
     const categorias = ['Todas', ...new Set(equipos.map((e) => e.categoria).filter(Boolean))]
     const filtrados = equipos.filter(
@@ -42,6 +57,67 @@ export default function Equipos() {
     const totalPaginas = Math.max(1, Math.ceil(filtrados.length / TAMANO_PAGINA))
     const paginaActual = Math.min(pagina, totalPaginas - 1)
     const visibles = filtrados.slice(paginaActual * TAMANO_PAGINA, (paginaActual + 1) * TAMANO_PAGINA)
+
+    function abrirNuevo() {
+        setErrorForm('')
+        setForm({ id: null, nombre: '', categoriaId: '', stock: 0, precioDia: '', estado: 'DISPONIBLE' })
+    }
+
+    function abrirEditar(eq) {
+        setErrorForm('')
+        setDetalle(null)
+        setForm({
+            id: eq.id,
+            nombre: eq.nombre,
+            categoriaId: String(eq.categoriaId ?? ''),
+            stock: eq.stock,
+            precioDia: String(eq.precioDia ?? ''),
+            estado: eq.estado ?? 'DISPONIBLE',
+        })
+    }
+
+    async function guardar(e) {
+        e.preventDefault()
+        if (!form.nombre.trim() || !form.categoriaId || form.precioDia === '') {
+            setErrorForm('Nombre, categoría y precio por día son obligatorios.')
+            return
+        }
+        if (!(Number(form.stock) >= 0) || !(Number(form.precioDia) >= 0)) {
+            setErrorForm('El stock y el precio no pueden ser negativos.')
+            return
+        }
+        setGuardando(true)
+        setErrorForm('')
+        const cuerpo = {
+            nombre: form.nombre.trim(),
+            categoriaId: Number(form.categoriaId),
+            stock: Number(form.stock),
+            precioDia: Number(form.precioDia),
+            estado: form.estado,
+        }
+        try {
+            if (form.id) await actualizarEquipo(form.id, cuerpo)
+            else await crearEquipo(cuerpo)
+            setForm(null)
+            recargar()
+        } catch (err) {
+            setErrorForm(mensajeDeError(err, 'No se pudo guardar el equipo'))
+        } finally {
+            setGuardando(false)
+        }
+    }
+
+    async function darDeBaja(eq) {
+        if (!window.confirm(`¿Dar de baja "${eq.nombre}"? Quedará en estado BAJA.`)) return
+        setErrorAccion('')
+        try {
+            await darDeBajaEquipo(eq.id)
+            setDetalle(null)
+            recargar()
+        } catch (err) {
+            setErrorAccion(mensajeDeError(err))
+        }
+    }
 
     function exportar() {
         descargarCsv('equipos.csv', [
@@ -81,12 +157,13 @@ export default function Equipos() {
                     <BotonSecundario onClick={exportar} disabled={filtrados.length === 0}>
                         Exportar CSV
                     </BotonSecundario>
+                    <BotonPrimario onClick={abrirNuevo}>+ Nuevo equipo</BotonPrimario>
                 </div>
             </div>
 
-            {error && (
+            {(error || errorAccion) && (
                 <div className="mb-4">
-                    <ErrorBanner mensaje={error} onReintentar={recargar} />
+                    <ErrorBanner mensaje={error || errorAccion} onReintentar={recargar} />
                 </div>
             )}
 
@@ -131,13 +208,27 @@ export default function Equipos() {
                                     <td className="px-4 py-3">
                                         <Badge estado={eq.estado} />
                                     </td>
-                                    <td className="px-4 py-3 text-right">
+                                    <td className="px-4 py-3 text-right space-x-3">
                                         <button
                                             onClick={() => setDetalle(eq)}
                                             className="text-blue-600 hover:underline text-xs"
                                         >
                                             Ver
                                         </button>
+                                        <button
+                                            onClick={() => abrirEditar(eq)}
+                                            className="text-blue-600 hover:underline text-xs"
+                                        >
+                                            Editar
+                                        </button>
+                                        {eq.estado !== 'BAJA' && (
+                                            <button
+                                                onClick={() => darDeBaja(eq)}
+                                                className="text-red-500 hover:underline text-xs"
+                                            >
+                                                Dar de baja
+                                            </button>
+                                        )}
                                     </td>
                                 </tr>
                             ))}
@@ -152,8 +243,78 @@ export default function Equipos() {
             <Paginacion pagina={paginaActual} totalPaginas={totalPaginas} onCambiar={setPagina} />
 
             <p className="text-xs text-gray-400 mt-4">
-                Solo lectura: el stock cambia con las órdenes de alquiler (entrega y devolución) y de compra.
+                El stock también cambia con las órdenes de alquiler (entrega y devolución) y de compra.
             </p>
+
+            <Modal
+                abierto={!!form}
+                titulo={form?.id ? 'Editar equipo' : 'Nuevo equipo'}
+                onCerrar={() => setForm(null)}
+            >
+                {form && (
+                    <form onSubmit={guardar}>
+                        <Campo label="Nombre *">
+                            <input
+                                value={form.nombre}
+                                onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+                                className={inputCls}
+                            />
+                        </Campo>
+                        <Campo label="Categoría *">
+                            <select
+                                value={form.categoriaId}
+                                onChange={(e) => setForm({ ...form, categoriaId: e.target.value })}
+                                className={inputCls}
+                            >
+                                <option value="">Elegir categoría…</option>
+                                {catalogo.map((c) => (
+                                    <option key={c.id} value={c.id}>{c.nombre}</option>
+                                ))}
+                            </select>
+                        </Campo>
+                        <div className="grid grid-cols-2 gap-x-4">
+                            <Campo label="Stock *">
+                                <input
+                                    type="number"
+                                    min="0"
+                                    value={form.stock}
+                                    onChange={(e) => setForm({ ...form, stock: e.target.value })}
+                                    className={inputCls}
+                                />
+                            </Campo>
+                            <Campo label="Precio por día (₲) *">
+                                <input
+                                    type="number"
+                                    min="0"
+                                    value={form.precioDia}
+                                    onChange={(e) => setForm({ ...form, precioDia: e.target.value })}
+                                    className={inputCls}
+                                />
+                            </Campo>
+                        </div>
+                        <Campo label="Estado">
+                            <select
+                                value={form.estado}
+                                onChange={(e) => setForm({ ...form, estado: e.target.value })}
+                                className={inputCls}
+                            >
+                                <option value="DISPONIBLE">DISPONIBLE</option>
+                                <option value="MANTENIMIENTO">MANTENIMIENTO</option>
+                                <option value="BAJA">BAJA</option>
+                            </select>
+                        </Campo>
+                        {errorForm && <p className="text-red-500 text-xs mb-3">{errorForm}</p>}
+                        <div className="flex justify-end gap-2">
+                            <BotonSecundario type="button" onClick={() => setForm(null)}>
+                                Cancelar
+                            </BotonSecundario>
+                            <BotonPrimario type="submit" disabled={guardando}>
+                                {guardando ? 'Guardando…' : 'Guardar'}
+                            </BotonPrimario>
+                        </div>
+                    </form>
+                )}
+            </Modal>
 
             <Modal
                 abierto={!!detalle}

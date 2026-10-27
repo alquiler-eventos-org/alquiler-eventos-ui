@@ -19,6 +19,7 @@ import { formatoFecha, formatoGs, resumenEquipos } from '../utils/formato'
 import { mensajeDeError, normalizarPagina } from '../api/client'
 import {
     TRANSICIONES,
+    actualizarOrdenAlquiler,
     cambiarEstadoOrdenAlquiler,
     crearOrdenAlquiler,
     listarOrdenesAlquiler,
@@ -118,6 +119,23 @@ export default function OrdenesAlquiler() {
         setNueva({ clienteId: '', fechaEvento: '', fechaDevolucion: '', lineas: [{ ...LINEA_VACIA }] })
     }
 
+    // Edición: carga la orden en el mismo formulario del alta (solo en RESERVA).
+    function abrirEditar(orden) {
+        setErrorNueva('')
+        setDetalle(null)
+        setNueva({
+            id: orden.id,
+            clienteId: String(orden.clienteId ?? ''),
+            fechaEvento: orden.fechaEvento ?? '',
+            fechaDevolucion: orden.fechaDevolucion ?? '',
+            lineas: (orden.detalles ?? []).map((d) => ({
+                equipoId: String(d.equipoId),
+                cantidad: d.cantidad,
+                costoUnitario: '',
+            })),
+        })
+    }
+
     async function guardarNueva(e) {
         e.preventDefault()
         const detalles = lineasADetalles(nueva.lineas)
@@ -132,18 +150,20 @@ export default function OrdenesAlquiler() {
         setGuardando(true)
         setErrorNueva('')
         try {
-            await crearOrdenAlquiler({
+            const cuerpo = {
                 clienteId: Number(nueva.clienteId),
                 fechaEvento: nueva.fechaEvento,
                 fechaDevolucion: nueva.fechaDevolucion || null,
                 detalles,
-            })
+            }
+            if (nueva.id) await actualizarOrdenAlquiler(nueva.id, cuerpo)
+            else await crearOrdenAlquiler(cuerpo)
             setNueva(null)
             setPagina(0)
             setBusqueda('')
             setRecarga((n) => n + 1)
         } catch (err) {
-            setErrorNueva(mensajeDeError(err, 'No se pudo crear la orden'))
+            setErrorNueva(mensajeDeError(err, 'No se pudo guardar la orden'))
         } finally {
             setGuardando(false)
         }
@@ -234,7 +254,7 @@ export default function OrdenesAlquiler() {
 
             <Modal
                 abierto={!!nueva}
-                titulo="Nueva orden de alquiler"
+                titulo={nueva?.id ? 'Editar orden de alquiler' : 'Nueva orden de alquiler'}
                 onCerrar={() => setNueva(null)}
                 ancho="max-w-xl"
             >
@@ -286,7 +306,7 @@ export default function OrdenesAlquiler() {
                                 Cancelar
                             </BotonSecundario>
                             <BotonPrimario type="submit" disabled={guardando}>
-                                {guardando ? 'Guardando…' : 'Crear orden'}
+                                {guardando ? 'Guardando…' : nueva.id ? 'Guardar cambios' : 'Crear orden'}
                             </BotonPrimario>
                         </div>
                     </form>
@@ -368,6 +388,14 @@ export default function OrdenesAlquiler() {
                             >
                                 Cerrar
                             </button>
+                            {detalle.estado === 'RESERVA' && (
+                                <button
+                                    onClick={() => abrirEditar(detalle)}
+                                    className="border border-blue-200 text-blue-700 hover:bg-blue-50 text-sm font-medium px-4 py-2 rounded-lg transition"
+                                >
+                                    Editar
+                                </button>
+                            )}
                             {acciones.map((estado) => (
                                 <button
                                     key={estado}

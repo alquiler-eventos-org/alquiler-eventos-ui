@@ -21,6 +21,7 @@ import { useConsulta } from '../hooks/useConsulta'
 import { listarProveedores } from '../api/proveedores'
 import { listarEquipos } from '../api/equipos'
 import {
+    actualizarOrdenCompra,
     cambiarEstadoOrdenCompra,
     crearOrdenCompra,
     listarOrdenesCompra,
@@ -129,6 +130,22 @@ export default function OrdenesCompra() {
         })
     }
 
+    // Edición: carga la orden en el mismo formulario del alta (solo en PENDIENTE).
+    function abrirEditar(orden) {
+        setErrorNueva('')
+        setDetalle(null)
+        setNueva({
+            id: orden.id,
+            proveedorId: String(orden.proveedorId ?? ''),
+            fechaCompra: orden.fechaCompra ?? '',
+            lineas: (orden.detalles ?? []).map((l) => ({
+                equipoId: String(l.equipoId),
+                cantidad: l.cantidad,
+                costoUnitario: String(l.costoUnitario ?? ''),
+            })),
+        })
+    }
+
     async function guardarNueva(e) {
         e.preventDefault()
         const detalles = lineasADetalles(nueva.lineas, true)
@@ -146,16 +163,18 @@ export default function OrdenesCompra() {
         setGuardando(true)
         setErrorNueva('')
         try {
-            await crearOrdenCompra({
+            const cuerpo = {
                 proveedorId: Number(nueva.proveedorId),
                 fechaCompra: nueva.fechaCompra,
                 detalles,
-            })
+            }
+            if (nueva.id) await actualizarOrdenCompra(nueva.id, cuerpo)
+            else await crearOrdenCompra(cuerpo)
             setNueva(null)
             setPagina(0)
             recargar()
         } catch (err) {
-            setErrorNueva(mensajeDeError(err, 'No se pudo crear la orden de compra'))
+            setErrorNueva(mensajeDeError(err, 'No se pudo guardar la orden de compra'))
         } finally {
             setGuardando(false)
         }
@@ -248,7 +267,7 @@ export default function OrdenesCompra() {
 
             <Modal
                 abierto={!!nueva}
-                titulo="Nueva orden de compra"
+                titulo={nueva?.id ? 'Editar orden de compra' : 'Nueva orden de compra'}
                 onCerrar={() => setNueva(null)}
                 ancho="max-w-xl"
             >
@@ -289,7 +308,7 @@ export default function OrdenesCompra() {
                                 Cancelar
                             </BotonSecundario>
                             <BotonPrimario type="submit" disabled={guardando}>
-                                {guardando ? 'Guardando…' : 'Crear orden'}
+                                {guardando ? 'Guardando…' : nueva.id ? 'Guardar cambios' : 'Crear orden'}
                             </BotonPrimario>
                         </div>
                     </form>
@@ -360,6 +379,14 @@ export default function OrdenesCompra() {
 
                         <div className="flex justify-end gap-2">
                             <BotonSecundario onClick={() => setDetalle(null)}>Cerrar</BotonSecundario>
+                            {detalle.estado === 'PENDIENTE' && (
+                                <button
+                                    onClick={() => abrirEditar(detalle)}
+                                    className="border border-blue-200 text-blue-700 hover:bg-blue-50 text-sm font-medium px-4 py-2 rounded-lg transition"
+                                >
+                                    Editar
+                                </button>
+                            )}
                             {acciones.map((e) => (
                                 <button
                                     key={e}
