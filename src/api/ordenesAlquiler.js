@@ -22,6 +22,12 @@ export function actualizarOrdenAlquiler(id, request) {
     return apiAlquiler.put(`/ordenes-alquiler/${id}`, request)
 }
 
+// Mora de la orden: { estado, fechaDevolucion, diasAtraso, tarifaDia, montoMora, origen }.
+// origen: REGISTRADA (guardada al devolver), ESTIMADA (calculada a hoy) o SIN_MORA.
+export function obtenerMora(id) {
+    return apiAlquiler.get(`/ordenes-alquiler/${id}/mora`)
+}
+
 export function obtenerOrdenAlquiler(id) {
     return apiAlquiler.get(`/ordenes-alquiler/${id}`)
 }

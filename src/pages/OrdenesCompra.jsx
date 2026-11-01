@@ -16,6 +16,7 @@ import {
 import LineasEditor from '../components/LineasEditor'
 import { LINEA_VACIA, lineasADetalles } from '../utils/lineas'
 import { formatoFecha, formatoGs, resumenEquipos } from '../utils/formato'
+import { hoyISO } from '../utils/resumen'
 import { mensajeDeError, normalizarPagina } from '../api/client'
 import { useConsulta } from '../hooks/useConsulta'
 import { listarProveedores } from '../api/proveedores'
@@ -125,7 +126,7 @@ export default function OrdenesCompra() {
         setErrorNueva('')
         setNueva({
             proveedorId: '',
-            fechaCompra: new Date().toISOString().slice(0, 10),
+            fechaCompra: hoyISO(),
             lineas: [{ ...LINEA_VACIA }],
         })
     }
