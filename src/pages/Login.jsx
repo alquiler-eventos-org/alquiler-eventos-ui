@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
 import { mensajeDeError } from '../api/client'
 import PasswordInput from '../components/PasswordInput'
+import { useLogo } from '../utils/logo'
 
 export default function Login() {
     const [email, setEmail] = useState('')
@@ -11,6 +12,7 @@ export default function Login() {
     const [cargando, setCargando] = useState(false)
     const { user, login } = useAuth()
     const navigate = useNavigate()
+    const logo = useLogo()
 
     // Si ya hay sesión vigente no tiene sentido mostrar el login.
     if (user) return <Navigate to="/dashboard" replace />
@@ -39,6 +41,7 @@ export default function Login() {
                 onSubmit={handleSubmit}
                 className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 w-full max-w-sm"
             >
+                {logo && <img src={logo} alt="Logotipo" className="h-14 mb-3 object-contain" />}
                 <h1 className="text-xl font-semibold text-gray-900">Alquiler de Equipos</h1>
                 <p className="text-sm text-gray-500 mt-1 mb-6">Iniciar sesión</p>
 

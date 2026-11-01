@@ -62,6 +62,8 @@ export const ROLES = {
     alquiler: ['ADMIN', 'ENCARGADO_DEPOSITO'],
     compras: ['ADMIN', 'ENCARGADO_COMPRAS'],
     seguridad: ['ADMIN'],
+    admin: ['ADMIN'],
+    todos: ['ADMIN', 'ENCARGADO_DEPOSITO', 'ENCARGADO_COMPRAS'],
 }
 
 // true si el usuario tiene alguno de los roles pedidos (o si no se pide ninguno).

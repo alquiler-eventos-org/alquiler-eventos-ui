@@ -11,6 +11,7 @@ import {
     inputCls,
 } from '../components/UI'
 import LineasEditor from '../components/LineasEditor'
+import MoraOrden from '../components/MoraOrden'
 import { LINEA_VACIA, lineasADetalles } from '../utils/lineas'
 import { useConsulta } from '../hooks/useConsulta'
 import { listarClientes } from '../api/clientes'
@@ -369,6 +370,10 @@ export default function OrdenesAlquiler() {
                                 )}
                             </tbody>
                         </table>
+
+                        {['ENTREGA', 'MORA', 'DEVOLUCION'].includes(detalle.estado) && (
+                            <MoraOrden orden={detalle} />
+                        )}
 
                         <div className="flex items-center justify-between text-sm font-semibold text-gray-900 mb-6">
                             <span>Total</span>

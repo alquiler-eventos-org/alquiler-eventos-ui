@@ -40,6 +40,34 @@ export async function cargarResumen({ alquiler, compras }) {
     return r
 }
 
+// ---------- Fechas locales (no UTC: de noche toISOString() ya devuelve el día siguiente) ----------
+export function fechaISO(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+export function hoyISO() {
+    return fechaISO(new Date())
+}
+
+export function primerDiaMesISO() {
+    const h = new Date()
+    return fechaISO(new Date(h.getFullYear(), h.getMonth(), 1))
+}
+
+export function ultimoDiaMesISO() {
+    const h = new Date()
+    return fechaISO(new Date(h.getFullYear(), h.getMonth() + 1, 0))
+}
+
+// true si la fecha ("2026-11-05") cae dentro del rango; desde/hasta vacíos = sin límite.
+export function enRango(fecha, desde, hasta) {
+    const f = (fecha ?? '').slice(0, 10)
+    if (!f) return false
+    if (desde && f < desde) return false
+    if (hasta && f > hasta) return false
+    return true
+}
+
 export function claveMes(fecha) {
     return (fecha ?? '').slice(0, 7) // "2026-10"
 }
@@ -90,14 +118,15 @@ export function ingresosPorMes(ordenes, cantidad = 6) {
     return meses
 }
 
-// Equipos con más ingreso acumulado en las órdenes no anuladas.
+// Equipos alquilados (unidades e ingreso) en las órdenes no anuladas, de mayor a menor ingreso.
 export function equiposMasAlquilados(ordenes, limite = 5) {
     const acc = new Map()
     for (const o of vigentes(ordenes)) {
         for (const l of o.detalles ?? []) {
             const nombre = l.equipoNombre ?? `Equipo #${l.equipoId}`
-            const previo = acc.get(nombre) ?? { equipo: nombre, veces: 0, ingreso: 0 }
+            const previo = acc.get(nombre) ?? { equipo: nombre, veces: 0, unidades: 0, ingreso: 0 }
             previo.veces += 1
+            previo.unidades += Number(l.cantidad ?? 0)
             previo.ingreso += Number(l.subtotal ?? 0)
             acc.set(nombre, previo)
         }

@@ -1,6 +1,8 @@
+import { useEffect } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
 import { ROLES, tieneRol } from '../api/sesion'
+import { sincronizarLogo, useLogo } from '../utils/logo'
 
 // Menú lateral. Cada ítem apunta a su ruta real en AppRoutes y solo se muestra
 // si el rol del usuario (claim "roles" del JWT) puede usar ese módulo.
@@ -12,7 +14,7 @@ const menuItems = [
     { nombre: 'Órdenes de Compra', ruta: '/ordenes-compra', roles: ROLES.compras },
     { nombre: 'Proveedores', ruta: '/proveedores', roles: ROLES.compras },
     { nombre: 'Usuarios', ruta: '/usuarios', roles: ROLES.seguridad },
-    { nombre: 'Reportes', ruta: '/reportes', roles: ROLES.alquiler },
+    { nombre: 'Reportes', ruta: '/reportes', roles: ROLES.todos },
     { nombre: 'Configuración', ruta: '/configuracion' },
 ]
 
@@ -29,6 +31,11 @@ export function EncabezadoPagina({ titulo, children }) {
 export default function AppLayout({ children }) {
     const { user, logout } = useAuth()
     const navigate = useNavigate()
+    const logo = useLogo()
+
+    useEffect(() => {
+        sincronizarLogo()
+    }, [])
 
     function handleLogout() {
         logout()
@@ -38,7 +45,12 @@ export default function AppLayout({ children }) {
     return (
         <div className="flex min-h-screen bg-gray-50">
             <aside className="w-56 bg-[#1f2333] text-white flex flex-col fixed inset-y-0 left-0">
-                <div className="px-6 py-5 font-semibold text-sm">Alquiler Eventos</div>
+                <div className="px-5 py-5 flex items-center gap-3 font-semibold text-sm">
+                    {logo && (
+                        <img src={logo} alt="Logotipo" className="h-9 w-9 rounded-md object-contain bg-white/90 p-0.5" />
+                    )}
+                    <span>Alquiler Eventos</span>
+                </div>
                 <nav className="flex-1 px-3 overflow-y-auto">
                     {menuItems.filter((item) => tieneRol(user, item.roles)).map((item) => (
                         <NavLink

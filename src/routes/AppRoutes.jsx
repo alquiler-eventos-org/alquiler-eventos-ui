@@ -63,7 +63,7 @@ export default function AppRoutes() {
             />
             <Route path="/proveedores" element={protegida(<Proveedores />, ROLES.compras)} />
             <Route path="/usuarios" element={protegida(<Usuarios />, ROLES.seguridad)} />
-            <Route path="/reportes" element={protegida(<Reportes />, ROLES.alquiler)} />
+            <Route path="/reportes" element={protegida(<Reportes />, ROLES.todos)} />
             <Route path="/configuracion" element={protegida(<Configuracion />)} />
             <Route path="/error" element={<ErrorServidor onReintentar={() => window.location.assign('/')} />} />
             <Route path="*" element={<NoEncontrada />} />
