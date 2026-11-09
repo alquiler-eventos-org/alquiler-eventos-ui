@@ -11,7 +11,7 @@ export const STOCK_BAJO = 2
 // Trae lo que el rol del usuario puede ver. Lo que falla o no corresponde
 // queda en null y la pantalla muestra "—" en vez de romperse.
 export async function cargarResumen({ alquiler, compras }) {
-    const r = { ordenes: null, equipos: null, comprasPendientes: null }
+    const r = { ordenes: null, equipos: null, comprasMes: null }
     const tareas = []
     if (alquiler) {
         tareas.push(
@@ -29,9 +29,12 @@ export async function cargarResumen({ alquiler, compras }) {
     }
     if (compras) {
         tareas.push(
-            listarOrdenesCompra({ page: 0, size: 1, filtros: { estado: 'PENDIENTE' } })
+            listarOrdenesCompra({ page: 0, size: 200 })
                 .then((x) => {
-                    r.comprasPendientes = normalizarPagina(x.data).totalElementos
+                    const mes = mesActual()
+                    r.comprasMes = normalizarPagina(x.data).contenido.filter(
+                        (o) => o.estado !== 'ANULADA' && claveMes(o.fechaCompra) === mes,
+                    ).length
                 })
                 .catch(() => {}),
         )

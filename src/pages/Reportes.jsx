@@ -22,18 +22,18 @@ import {
     cargarResumen,
     enRango,
     equiposAfuera,
-    equiposMasAlquilados,
     hoyISO,
-    ingresosPorMes,
     primerDiaMesISO,
     ultimoDiaMesISO,
 } from '../utils/resumen'
 import { listarEquipos } from '../api/equipos'
 
 // ====== Reportes con datos reales ======
-// No hay endpoints de reportes: se calculan en el navegador con las órdenes que
-// devuelven ms-alquiler y ms-compras (hasta 500 de cada una). Las anuladas se
-// listan pero no suman. Cada rol ve solo su módulo; el administrador ve ambos.
+// Reporte simple: un filtro de fechas, unos pocos totales y las dos listas principales
+// (actividad de alquiler y actividad de compras). No hay endpoints de reportes: se
+// calcula en el navegador con las órdenes que devuelven ms-alquiler y ms-compras
+// (hasta 500 de cada una). Las anuladas se listan pero no suman. Cada rol ve solo su
+// módulo; el administrador ve ambos. El botón de imprimir está arriba.
 
 const POR_PAGINA = 8
 const suma = (lista) => lista.reduce((acc, o) => acc + Number(o.total ?? 0), 0)
@@ -57,7 +57,7 @@ function Tabla({ titulo, columnas, filas, vacio }) {
         <div className="bg-white rounded-xl border border-gray-200 mb-6">
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-gray-900">{titulo}</h2>
-                <span className="text-xs text-gray-400">{filas.length} movimientos</span>
+                <span className="text-xs text-gray-400">{filas.length} registros</span>
             </div>
             <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -124,9 +124,6 @@ export default function Reportes() {
 
     const alqPeriodo = ordenesAlq ? ordenesAlq.filter((o) => enRango(o.fechaEvento, desde, hasta)) : []
     const comPeriodo = ordenesCom ? ordenesCom.filter((o) => enRango(o.fechaCompra, desde, hasta)) : []
-    const alquilados = equiposMasAlquilados(alqPeriodo, Infinity)
-    const porMes = ordenesAlq ? ingresosPorMes(ordenesAlq) : []
-    const maxIngreso = Math.max(1, ...porMes.map((m) => m.valor))
 
     const nombreProveedor = (o) =>
         o.proveedorNombre ?? proveedores.find((p) => p.id === o.proveedorId)?.nombre ?? 'Proveedor'
@@ -152,9 +149,10 @@ export default function Reportes() {
             clave: `c${o.id}`,
             celdas: [
                 formatoFecha(o.fechaCompra),
+                o.numeroFactura ?? '—',
                 nombreProveedor(o),
+                o.condicionPago === 'CREDITO' ? 'Crédito' : o.condicionPago === 'CONTADO' ? 'Contado' : '—',
                 resumenEquipos((o.detalles ?? []).map((l) => ({ nombre: nombreEquipo(l), cantidad: l.cantidad }))),
-                <Badge key="e" estado={o.estado} />,
                 formatoGs(o.total),
             ],
         }))
@@ -167,7 +165,7 @@ export default function Reportes() {
     function exportar() {
         const filas = []
         if (ordenesAlq) {
-            filas.push(['Movimientos de alquiler'], ['Fecha del evento', 'Cliente', 'Equipos', 'Devolución', 'Estado', 'Total'])
+            filas.push(['Actividad de alquiler'], ['Fecha del evento', 'Cliente', 'Equipos', 'Devolución', 'Estado', 'Total'])
             alqPeriodo.forEach((o) =>
                 filas.push([
                     formatoFecha(o.fechaEvento),
@@ -181,13 +179,14 @@ export default function Reportes() {
             filas.push([])
         }
         if (ordenesCom) {
-            filas.push(['Movimientos de compras'], ['Fecha de compra', 'Proveedor', 'Equipos', 'Estado', 'Total'])
+            filas.push(['Actividad de compras'], ['Fecha de la factura', 'N° factura', 'Proveedor', 'Condición', 'Equipos', 'Total'])
             comPeriodo.forEach((o) =>
                 filas.push([
                     formatoFecha(o.fechaCompra),
+                    o.numeroFactura ?? '',
                     nombreProveedor(o),
+                    o.condicionPago ?? '',
                     (o.detalles ?? []).map((l) => `${nombreEquipo(l)} x${l.cantidad}`).join(' | '),
-                    o.estado,
                     o.total,
                 ]),
             )
@@ -206,8 +205,8 @@ export default function Reportes() {
 
             {!cargando && (ordenesAlq || ordenesCom) && (
                 <>
-                    {/* Filtro de fechas */}
-                    <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6 flex flex-wrap items-end gap-3">
+                    {/* Filtro de fechas + acciones (imprimir arriba, sin tener que bajar) */}
+                    <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6 flex flex-wrap items-end gap-3 print:hidden">
                         <label className="text-xs text-gray-500">
                             Desde
                             <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className={`${filtroCls} block mt-1`} />
@@ -221,77 +220,32 @@ export default function Reportes() {
                             <BotonSecundario onClick={() => rangoRapido(primerDiaMesISO(), ultimoDiaMesISO())}>Este mes</BotonSecundario>
                             <BotonSecundario onClick={() => rangoRapido('', '')}>Todo</BotonSecundario>
                         </div>
-                        <p className="text-xs text-gray-400 ml-auto">
-                            Alquileres por fecha del evento · compras por fecha de compra
-                        </p>
+                        <div className="flex gap-2 ml-auto">
+                            <BotonSecundario onClick={exportar}>Exportar CSV</BotonSecundario>
+                            <BotonPrimario onClick={() => window.print()}>Imprimir / guardar PDF</BotonPrimario>
+                        </div>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                         {ordenesAlq && (
                             <>
-                                <Kpi label="Ingresos del período" valor={formatoGs(suma(vigentes(alqPeriodo)))} />
-                                <Kpi label="Órdenes de alquiler del período" valor={vigentes(alqPeriodo).length} />
+                                <Kpi label="Ingresos por alquiler" valor={formatoGs(suma(vigentes(alqPeriodo)))} />
+                                <Kpi label="Órdenes de alquiler" valor={vigentes(alqPeriodo).length} />
                                 <Kpi label="Equipos afuera ahora" valor={equiposAfuera(ordenesAlq)} />
                                 <Kpi label="Equipos en mora" valor={equiposAfuera(ordenesAlq, 'MORA')} />
                             </>
                         )}
                         {ordenesCom && (
                             <>
-                                <Kpi label="Gasto en compras del período" valor={formatoGs(suma(vigentes(comPeriodo)))} />
-                                <Kpi label="Órdenes de compra del período" valor={vigentes(comPeriodo).length} />
+                                <Kpi label="Gasto en compras" valor={formatoGs(suma(vigentes(comPeriodo)))} />
+                                <Kpi label="Facturas de compra" valor={vigentes(comPeriodo).length} />
                             </>
                         )}
                     </div>
 
                     {ordenesAlq && (
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-                            <div className="bg-white rounded-xl border border-gray-200 p-4">
-                                <h2 className="text-sm font-semibold text-gray-900 mb-4">
-                                    Ingresos por mes (últimos 6 meses)
-                                </h2>
-                                <div className="flex items-end gap-4 h-40">
-                                    {porMes.map((m) => (
-                                        <div key={m.clave} className="flex-1 flex flex-col items-center justify-end gap-1 h-full">
-                                            <span className="text-[10px] text-gray-400">{(m.valor / 1000000).toFixed(1)}M</span>
-                                            <div
-                                                className="w-full bg-blue-500 rounded-t-md min-h-[2px]"
-                                                style={{ height: `${(m.valor / maxIngreso) * 100}%` }}
-                                                title={formatoGs(m.valor)}
-                                            />
-                                            <span className="text-xs text-gray-500">{m.mes}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="bg-white rounded-xl border border-gray-200 p-4">
-                                <h2 className="text-sm font-semibold text-gray-900 mb-4">
-                                    Equipos alquilados en el período
-                                </h2>
-                                {alquilados.length === 0 ? (
-                                    <p className="text-sm text-gray-400 py-4">No hay equipos alquilados en estas fechas.</p>
-                                ) : (
-                                    <ul className="divide-y divide-gray-50 max-h-56 overflow-y-auto">
-                                        {alquilados.map((e) => (
-                                            <li key={e.equipo} className="flex items-center justify-between py-2.5 text-sm">
-                                                <span className="text-gray-700">{e.equipo}</span>
-                                                <span className="flex items-center gap-3">
-                                                    <span className="text-xs text-gray-400">
-                                                        {e.unidades} {e.unidades === 1 ? 'unidad' : 'unidades'}
-                                                    </span>
-                                                    <span className="text-gray-900 font-medium">{formatoGs(e.ingreso)}</span>
-                                                </span>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {ordenesAlq && (
                         <Tabla
-                            titulo="Movimientos de alquiler"
+                            titulo="Actividad de alquiler"
                             columnas={['Fecha del evento', 'Cliente', 'Equipos', 'Devolución', 'Estado', 'Total']}
                             filas={filasAlquiler}
                             vacio="No hay alquileres en estas fechas."
@@ -299,22 +253,17 @@ export default function Reportes() {
                     )}
                     {ordenesCom && (
                         <Tabla
-                            titulo="Movimientos de compras"
-                            columnas={['Fecha de compra', 'Proveedor', 'Equipos', 'Estado', 'Total']}
+                            titulo="Actividad de compras"
+                            columnas={['Fecha de la factura', 'N° factura', 'Proveedor', 'Condición', 'Equipos', 'Total']}
                             filas={filasCompras}
                             vacio="No hay compras en estas fechas."
                         />
                     )}
 
-                    <div className="flex items-center justify-between bg-white rounded-xl border border-gray-200 p-4">
-                        <p className="text-sm text-gray-500">
-                            Las órdenes anuladas aparecen en la lista pero no suman en los totales.
-                        </p>
-                        <div className="flex gap-2">
-                            <BotonSecundario onClick={exportar}>Exportar CSV</BotonSecundario>
-                            <BotonPrimario onClick={() => window.print()}>Imprimir / guardar PDF</BotonPrimario>
-                        </div>
-                    </div>
+                    <p className="text-xs text-gray-400">
+                        Alquileres por fecha del evento · compras por fecha de factura. Las órdenes anuladas
+                        aparecen en la lista pero no suman en los totales.
+                    </p>
                 </>
             )}
         </AppLayout>

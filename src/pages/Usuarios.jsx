@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useConfirmar } from '../context/useConfirmar'
 import AppLayout from '../layouts/AppLayout'
 import {
     BotonPrimario,
@@ -41,6 +42,7 @@ function ChipRol({ rol }) {
 const TAMANO_PAGINA = 8
 
 export default function Usuarios() {
+    const confirmar = useConfirmar()
     const [pagina, setPagina] = useState(0)
     const { user } = useAuth()
     const [busqueda, setBusqueda] = useState('')
@@ -124,7 +126,7 @@ export default function Usuarios() {
     }
 
     async function desactivar(u) {
-        if (!window.confirm(`¿Desactivar a ${u.email}? Ya no podrá iniciar sesión.`)) return
+        if (!(await confirmar(`¿Desactivar a ${u.email}? Ya no podrá iniciar sesión.`))) return
         setErrorAccion('')
         try {
             await desactivarUsuario(u.id)

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useConfirmar } from '../../context/useConfirmar'
 import Fila from './Fila'
 import { BotonPrimario, BotonSecundario } from '../UI'
 import { mensajeDeError } from '../../api/client'
@@ -33,6 +34,7 @@ function reducirImagen(archivo) {
 }
 
 export default function LogoSistema() {
+    const confirmar = useConfirmar()
     const actual = useLogo()
     const [nuevo, setNuevo] = useState(null) // data URL a la espera de guardar
     const [error, setError] = useState('')
@@ -76,7 +78,7 @@ export default function LogoSistema() {
     }
 
     async function quitar() {
-        if (!window.confirm('¿Quitar el logotipo del sistema?')) return
+        if (!(await confirmar('¿Quitar el logotipo del sistema?'))) return
         setOcupado(true)
         setError('')
         try {

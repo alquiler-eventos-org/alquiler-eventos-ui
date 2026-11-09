@@ -6,7 +6,15 @@ import MontoInput from './MontoInput'
 // Helpers en utils/lineas.js (LINEA_VACIA, lineasADetalles).
 // `equipos` es la lista que devuelve GET /equipos; si no se pudo cargar (null),
 // se pide el ID del equipo a mano para no bloquear el formulario.
-export default function LineasEditor({ lineas, onChange, equipos, conCosto = false }) {
+export default function LineasEditor({
+    lineas,
+    onChange,
+    equipos,
+    conCosto = false,
+    etiqueta = 'Equipos',
+    textoAgregar = '+ Agregar equipo',
+    accionExtra = null,
+}) {
     function cambiar(indice, campo, valor) {
         onChange(lineas.map((l, i) => (i === indice ? { ...l, [campo]: valor } : l)))
     }
@@ -18,14 +26,17 @@ export default function LineasEditor({ lineas, onChange, equipos, conCosto = fal
     return (
         <div className="mb-4">
             <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-gray-500">Equipos</span>
-                <button
-                    type="button"
-                    onClick={() => onChange([...lineas, { ...LINEA_VACIA }])}
-                    className="text-xs text-blue-600 hover:underline"
-                >
-                    + Agregar equipo
-                </button>
+                <span className="text-xs text-gray-500">{etiqueta}</span>
+                <span className="flex items-center gap-3">
+                    {accionExtra}
+                    <button
+                        type="button"
+                        onClick={() => onChange([...lineas, { ...LINEA_VACIA }])}
+                        className="text-xs text-blue-600 hover:underline"
+                    >
+                        {textoAgregar}
+                    </button>
+                </span>
             </div>
             <div className="space-y-2">
                 {lineas.map((l, i) => (

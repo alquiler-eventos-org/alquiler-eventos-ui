@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useConfirmar } from '../context/useConfirmar'
 import AppLayout from '../layouts/AppLayout'
 import {
     Badge,
@@ -42,6 +43,7 @@ const textoAccion = {
 }
 
 export default function OrdenesAlquiler() {
+    const confirmar = useConfirmar()
     const [pagina, setPagina] = useState(0)
     const [filtro, setFiltro] = useState('Todas')
     const [busqueda, setBusqueda] = useState('')
@@ -101,7 +103,7 @@ export default function OrdenesAlquiler() {
     }
 
     async function cambiarEstado(orden, nuevoEstado) {
-        if (!window.confirm(`¿Pasar la orden de ${orden.clienteNombre} a ${nuevoEstado}?`)) return
+        if (!(await confirmar(`¿Pasar la orden de ${orden.clienteNombre} a ${nuevoEstado}?`))) return
         setGuardando(true)
         setErrorAccion('')
         try {
@@ -211,8 +213,8 @@ export default function OrdenesAlquiler() {
                 <table className="w-full text-sm">
                     <thead>
                         <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
-                            <th className="px-4 py-3 font-medium">Equipos</th>
                             <th className="px-4 py-3 font-medium">Cliente</th>
+                            <th className="px-4 py-3 font-medium">Equipos</th>
                             <th className="px-4 py-3 font-medium">Fecha del evento</th>
                             <th className="px-4 py-3 font-medium">Devolución</th>
                             <th className="px-4 py-3 font-medium">Estado</th>

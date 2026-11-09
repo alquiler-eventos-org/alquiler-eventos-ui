@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useConfirmar } from '../context/useConfirmar'
 import AppLayout from '../layouts/AppLayout'
 import {
     BotonPrimario,
@@ -28,6 +29,7 @@ const TAMANO_PAGINA = 6
 const FORM_VACIO = { nombre: '', contacto: '', telefono: '', email: '', direccion: '' }
 
 export default function Proveedores() {
+    const confirmar = useConfirmar()
     const [pagina, setPagina] = useState(0)
     const [busqueda, setBusqueda] = useState('')
     const [termino, setTermino] = useState('')
@@ -99,7 +101,7 @@ export default function Proveedores() {
     }
 
     async function eliminar(pr) {
-        if (!window.confirm(`¿Dar de baja a ${pr.nombre}? (borrado lógico)`)) return
+        if (!(await confirmar(`¿Dar de baja a ${pr.nombre}? (borrado lógico)`))) return
         setErrorAccion('')
         try {
             await eliminarProveedor(pr.id)

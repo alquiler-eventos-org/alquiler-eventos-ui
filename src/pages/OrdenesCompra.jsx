@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useConfirmar } from '../context/useConfirmar'
 import AppLayout from '../layouts/AppLayout'
 import {
     Badge,
@@ -19,22 +20,38 @@ import { formatoFecha, formatoGs, resumenEquipos } from '../utils/formato'
 import { hoyISO } from '../utils/resumen'
 import { mensajeDeError, normalizarPagina } from '../api/client'
 import { useConsulta } from '../hooks/useConsulta'
-import { listarProveedores } from '../api/proveedores'
-import { listarEquipos } from '../api/equipos'
+import { crearProveedor, listarProveedores } from '../api/proveedores'
+import { crearEquipo, listarCategorias, listarEquipos } from '../api/equipos'
 import {
-    actualizarOrdenCompra,
     cambiarEstadoOrdenCompra,
     crearOrdenCompra,
     listarOrdenesCompra,
 } from '../api/ordenesCompra'
+import MontoInput from '../components/MontoInput'
 
-// ====== Pantalla REAL: órdenes de compra de ms-compras via el API Gateway ======
-// Estados: PENDIENTE -> CONFIRMADA -> RECIBIDA, y PENDIENTE -> ANULADA.
+// ====== Pantalla REAL: FACTURAS DE COMPRA (ms-compras via el API Gateway) ======
+// La factura se registra directa: nace RECIBIDA y suma el stock en el momento (sin
+// estados). Trae número de factura, RUC/CI, condición (contado o crédito) y permite
+// crear un proveedor o un producto nuevo desde el mismo formulario.
+// Las órdenes viejas (PENDIENTE/CONFIRMADA) conservan sus botones para poder cerrarlas.
 
 const TAMANO_PAGINA = 6
 const MAX_CARGA = 200
-const filtros = ['Todas', 'PENDIENTE', 'CONFIRMADA', 'RECIBIDA', 'ANULADA']
+const filtros = ['Todas', 'CONTADO', 'CREDITO']
+const PROVEEDOR_VACIO = { nombre: '', contacto: '', telefono: '', email: '' }
+const PRODUCTO_VACIO = { nombre: '', categoriaId: '', precioDia: '' }
 
+function CondicionTag({ condicion }) {
+    if (!condicion) return <span className="text-gray-300">—</span>
+    const color = condicion === 'CREDITO' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-600'
+    return (
+        <span className={`text-xs px-2 py-1 rounded-full font-medium ${color}`}>
+            {condicion === 'CREDITO' ? 'CRÉDITO' : 'CONTADO'}
+        </span>
+    )
+}
+
+// Solo para órdenes antiguas anteriores a la factura directa.
 const TRANSICIONES = {
     PENDIENTE: ['CONFIRMADA', 'ANULADA'],
     CONFIRMADA: ['RECIBIDA'],
@@ -49,6 +66,7 @@ const textoAccion = {
 }
 
 export default function OrdenesCompra() {
+    const confirmar = useConfirmar()
     const [pagina, setPagina] = useState(0)
     const [filtro, setFiltro] = useState('Todas')
     const [busqueda, setBusqueda] = useState('')
@@ -57,25 +75,24 @@ export default function OrdenesCompra() {
     const [guardando, setGuardando] = useState(false)
     const [nueva, setNueva] = useState(null)
     const [errorNueva, setErrorNueva] = useState('')
+    const [provNuevo, setProvNuevo] = useState(null) // formulario inline de proveedor
+    const [prodNuevo, setProdNuevo] = useState(null) // formulario inline de producto
+    const [errorInline, setErrorInline] = useState('')
 
-    const estado = filtro === 'Todas' ? undefined : filtro
     const { datos, error, cargando, recargar } = useConsulta(
-        () =>
-            listarOrdenesCompra({
-                page: 0,
-                size: MAX_CARGA,
-                filtros: estado ? { estado } : {},
-            }),
-        [filtro],
+        () => listarOrdenesCompra({ page: 0, size: MAX_CARGA }),
+        [],
     )
     const p = datos ? normalizarPagina(datos, 0, MAX_CARGA) : null
 
     // Nombres: la orden trae proveedorId / equipoId; se resuelven con estas listas.
-    const { datos: proveedoresDatos } = useConsulta(
+    const { datos: proveedoresDatos, recargar: recargarProveedores } = useConsulta(
         () => listarProveedores({ page: 0, size: 100 }),
         [],
     )
-    const { datos: equiposDatos } = useConsulta(() => listarEquipos({}), [])
+    const { datos: equiposDatos, recargar: recargarEquipos } = useConsulta(() => listarEquipos({}), [])
+    const { datos: categoriasDatos } = useConsulta(() => listarCategorias(), [])
+    const categorias = categoriasDatos ? normalizarPagina(categoriasDatos).contenido : []
     const proveedores = proveedoresDatos ? normalizarPagina(proveedoresDatos).contenido : []
     const equipos = equiposDatos ? normalizarPagina(equiposDatos).contenido : null
 
@@ -88,11 +105,13 @@ export default function OrdenesCompra() {
         equipos?.find((eq) => eq.id === l.equipoId)?.nombre ??
         'Equipo'
 
-    const filtradas = (p?.contenido ?? []).filter((o) =>
-        `${nombreProveedor(o)} ${o.estado} ${(o.detalles ?? []).map(nombreEquipo).join(' ')}`
-            .toLowerCase()
-            .includes(busqueda.toLowerCase()),
-    )
+    const filtradas = (p?.contenido ?? [])
+        .filter((o) => filtro === 'Todas' || o.condicionPago === filtro)
+        .filter((o) =>
+            `${nombreProveedor(o)} ${o.numeroFactura ?? ''} ${o.ruc ?? ''} ${o.ci ?? ''} ${(o.detalles ?? []).map(nombreEquipo).join(' ')}`
+                .toLowerCase()
+                .includes(busqueda.toLowerCase()),
+        )
     const totalPaginas = Math.max(1, Math.ceil(filtradas.length / TAMANO_PAGINA))
     const paginaActual = Math.min(pagina, totalPaginas - 1)
     const visibles = filtradas.slice(paginaActual * TAMANO_PAGINA, (paginaActual + 1) * TAMANO_PAGINA)
@@ -108,7 +127,7 @@ export default function OrdenesCompra() {
     }
 
     async function cambiarEstado(orden, nuevoEstado) {
-        if (!window.confirm(`¿Pasar la orden de ${nombreProveedor(orden)} a ${nuevoEstado}?`)) return
+        if (!(await confirmar(`¿Pasar la orden de ${nombreProveedor(orden)} a ${nuevoEstado}?`))) return
         setGuardando(true)
         setErrorAccion('')
         try {
@@ -124,41 +143,103 @@ export default function OrdenesCompra() {
 
     function abrirNueva() {
         setErrorNueva('')
+        setErrorInline('')
+        setProvNuevo(null)
+        setProdNuevo(null)
         setNueva({
             proveedorId: '',
+            numeroFactura: '',
+            ruc: '',
+            ci: '',
+            condicionPago: 'CONTADO',
+            fechaVencimiento: '',
             fechaCompra: hoyISO(),
+            observaciones: '',
             lineas: [{ ...LINEA_VACIA }],
         })
     }
 
-    // Edición: carga la orden en el mismo formulario del alta (solo en PENDIENTE).
-    function abrirEditar(orden) {
-        setErrorNueva('')
-        setDetalle(null)
-        setNueva({
-            id: orden.id,
-            proveedorId: String(orden.proveedorId ?? ''),
-            fechaCompra: orden.fechaCompra ?? '',
-            lineas: (orden.detalles ?? []).map((l) => ({
-                equipoId: String(l.equipoId),
-                cantidad: l.cantidad,
-                costoUnitario: String(l.costoUnitario ?? ''),
-            })),
-        })
+    // Alta de proveedor sin salir de la factura: se crea y queda elegido.
+    async function guardarProveedorNuevo() {
+        if (!provNuevo.nombre.trim()) {
+            setErrorInline('El nombre del proveedor es obligatorio.')
+            return
+        }
+        setGuardando(true)
+        setErrorInline('')
+        try {
+            const cuerpo = { nombre: provNuevo.nombre.trim() }
+            if (provNuevo.contacto.trim()) cuerpo.contacto = provNuevo.contacto.trim()
+            if (provNuevo.telefono.trim()) cuerpo.telefono = provNuevo.telefono.trim()
+            if (provNuevo.email.trim()) cuerpo.email = provNuevo.email.trim()
+            const { data } = await crearProveedor(cuerpo)
+            recargarProveedores()
+            setNueva((n) => ({ ...n, proveedorId: String(data.id) }))
+            setProvNuevo(null)
+        } catch (err) {
+            setErrorInline(mensajeDeError(err, 'No se pudo crear el proveedor'))
+        } finally {
+            setGuardando(false)
+        }
+    }
+
+    // Alta de producto (equipo) sin salir de la factura: nace con stock 0 y la propia
+    // factura le suma las unidades compradas.
+    async function guardarProductoNuevo() {
+        if (!prodNuevo.nombre.trim() || !prodNuevo.categoriaId || prodNuevo.precioDia === '') {
+            setErrorInline('Completá nombre, categoría y precio por día del producto.')
+            return
+        }
+        setGuardando(true)
+        setErrorInline('')
+        try {
+            const { data } = await crearEquipo({
+                nombre: prodNuevo.nombre.trim(),
+                categoriaId: Number(prodNuevo.categoriaId),
+                stock: 0,
+                precioDia: Number(prodNuevo.precioDia),
+                estado: 'DISPONIBLE',
+            })
+            recargarEquipos()
+            setNueva((n) => {
+                const vacia = n.lineas.findIndex((l) => l.equipoId === '')
+                const linea = { ...LINEA_VACIA, equipoId: String(data.id) }
+                const lineas =
+                    vacia >= 0 ? n.lineas.map((l, i) => (i === vacia ? { ...l, equipoId: String(data.id) } : l)) : [...n.lineas, linea]
+                return { ...n, lineas }
+            })
+            setProdNuevo(null)
+        } catch (err) {
+            setErrorInline(mensajeDeError(err, 'No se pudo crear el producto'))
+        } finally {
+            setGuardando(false)
+        }
     }
 
     async function guardarNueva(e) {
         e.preventDefault()
         const detalles = lineasADetalles(nueva.lineas, true)
         if (!nueva.proveedorId || !nueva.fechaCompra) {
-            setErrorNueva('Elegí el proveedor y la fecha de compra.')
+            setErrorNueva('Elegí el proveedor y la fecha de la factura.')
+            return
+        }
+        if (!nueva.numeroFactura.trim()) {
+            setErrorNueva('Ingresá el número de factura.')
+            return
+        }
+        if (!nueva.ruc.trim() && !nueva.ci.trim()) {
+            setErrorNueva('Ingresá el RUC o la CI del proveedor.')
+            return
+        }
+        if (nueva.condicionPago === 'CREDITO' && !nueva.fechaVencimiento) {
+            setErrorNueva('Una factura a crédito necesita fecha de vencimiento.')
             return
         }
         if (
             detalles.length === 0 ||
-            detalles.some((d) => !(d.cantidad >= 1) || !(d.costoUnitario >= 0) || Number.isNaN(d.costoUnitario))
+            detalles.some((d) => !(d.cantidad >= 1) || !(d.costoUnitario > 0) || Number.isNaN(d.costoUnitario))
         ) {
-            setErrorNueva('Agregá al menos un equipo con cantidad y costo unitario válidos.')
+            setErrorNueva('Agregá al menos un producto con cantidad y costo unitario mayores a cero.')
             return
         }
         setGuardando(true)
@@ -167,27 +248,37 @@ export default function OrdenesCompra() {
             const cuerpo = {
                 proveedorId: Number(nueva.proveedorId),
                 fechaCompra: nueva.fechaCompra,
+                numeroFactura: nueva.numeroFactura.trim(),
+                condicionPago: nueva.condicionPago,
                 detalles,
             }
-            if (nueva.id) await actualizarOrdenCompra(nueva.id, cuerpo)
-            else await crearOrdenCompra(cuerpo)
+            if (nueva.ruc.trim()) cuerpo.ruc = nueva.ruc.trim()
+            if (nueva.ci.trim()) cuerpo.ci = nueva.ci.trim()
+            if (nueva.condicionPago === 'CREDITO') cuerpo.fechaVencimiento = nueva.fechaVencimiento
+            if (nueva.observaciones.trim()) cuerpo.observaciones = nueva.observaciones.trim()
+            await crearOrdenCompra(cuerpo)
             setNueva(null)
             setPagina(0)
             recargar()
+            recargarEquipos()
         } catch (err) {
-            setErrorNueva(mensajeDeError(err, 'No se pudo guardar la orden de compra'))
+            setErrorNueva(mensajeDeError(err, 'No se pudo registrar la factura de compra'))
         } finally {
             setGuardando(false)
         }
     }
 
+    const totalNueva = nueva
+        ? nueva.lineas.reduce((acc, l) => acc + Number(l.cantidad || 0) * Number(l.costoUnitario || 0), 0)
+        : 0
+
     const acciones = detalle ? (TRANSICIONES[detalle.estado] ?? []) : []
 
     return (
-        <AppLayout titulo="Órdenes de Compra">
+        <AppLayout titulo="Facturas de Compra">
             <div className="flex items-center justify-between mb-6">
                 <p className="text-xs text-gray-400">
-                    {cargando ? 'Cargando…' : `${filtradas.length} órdenes`}
+                    {cargando ? 'Cargando…' : `${filtradas.length} facturas`}
                 </p>
                 <div className="flex items-center gap-2">
                     <input
@@ -197,7 +288,7 @@ export default function OrdenesCompra() {
                             setPagina(0)
                         }}
                         className={filtroCls}
-                        placeholder="Buscar por proveedor o equipo…"
+                        placeholder="Buscar por proveedor, N° de factura o equipo…"
                     />
                     <select
                         value={filtro}
@@ -205,10 +296,12 @@ export default function OrdenesCompra() {
                         className={filtroCls}
                     >
                         {filtros.map((f) => (
-                            <option key={f} value={f}>{f}</option>
+                            <option key={f} value={f}>
+                                {f === 'CREDITO' ? 'CRÉDITO' : f === 'Todas' ? 'Todas las condiciones' : f}
+                            </option>
                         ))}
                     </select>
-                    <BotonPrimario onClick={abrirNueva}>+ Nueva orden</BotonPrimario>
+                    <BotonPrimario onClick={abrirNueva}>+ Nueva factura de compra</BotonPrimario>
                 </div>
             </div>
 
@@ -225,10 +318,11 @@ export default function OrdenesCompra() {
                     <table className="w-full text-sm">
                         <thead>
                             <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
-                                <th className="px-4 py-3 font-medium">Proveedor</th>
-                                <th className="px-4 py-3 font-medium">Equipos</th>
                                 <th className="px-4 py-3 font-medium">Fecha</th>
-                                <th className="px-4 py-3 font-medium">Estado</th>
+                                <th className="px-4 py-3 font-medium">N° factura</th>
+                                <th className="px-4 py-3 font-medium">Proveedor</th>
+                                <th className="px-4 py-3 font-medium">Condición</th>
+                                <th className="px-4 py-3 font-medium">Equipos</th>
                                 <th className="px-4 py-3 font-medium">Total</th>
                                 <th className="px-4 py-3 font-medium text-right">Acciones</th>
                             </tr>
@@ -239,12 +333,13 @@ export default function OrdenesCompra() {
                                     key={o.id}
                                     className="border-b border-gray-50 last:border-0 hover:bg-gray-50"
                                 >
-                                    <td className="px-4 py-3 text-gray-700">{nombreProveedor(o)}</td>
-                                    <td className="px-4 py-3 text-gray-500">{resumenEquipos((o.detalles ?? []).map((l) => ({ nombre: nombreEquipo(l), cantidad: l.cantidad })))}</td>
                                     <td className="px-4 py-3 text-gray-700">{formatoFecha(o.fechaCompra)}</td>
+                                    <td className="px-4 py-3 text-gray-700">{o.numeroFactura ?? '—'}</td>
+                                    <td className="px-4 py-3 text-gray-700">{nombreProveedor(o)}</td>
                                     <td className="px-4 py-3">
-                                        <Badge estado={o.estado} />
+                                        <CondicionTag condicion={o.condicionPago} />
                                     </td>
+                                    <td className="px-4 py-3 text-gray-500">{resumenEquipos((o.detalles ?? []).map((l) => ({ nombre: nombreEquipo(l), cantidad: l.cantidad })))}</td>
                                     <td className="px-4 py-3 text-gray-700">{formatoGs(o.total)}</td>
                                     <td className="px-4 py-3 text-right">
                                         <button
@@ -260,7 +355,7 @@ export default function OrdenesCompra() {
                     </table>
                 )}
                 {!cargando && !error && filtradas.length === 0 && (
-                    <SinDatos mensaje="No hay órdenes que coincidan con la búsqueda." />
+                    <SinDatos mensaje="No hay facturas que coincidan con la búsqueda." />
                 )}
             </div>
 
@@ -268,40 +363,215 @@ export default function OrdenesCompra() {
 
             <Modal
                 abierto={!!nueva}
-                titulo={nueva?.id ? 'Editar orden de compra' : 'Nueva orden de compra'}
+                titulo="Factura de compra"
                 onCerrar={() => setNueva(null)}
-                ancho="max-w-xl"
+                ancho="max-w-2xl"
             >
                 {nueva && (
                     <form onSubmit={guardarNueva}>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
+                            <Campo label="N° de factura *">
+                                <input
+                                    value={nueva.numeroFactura}
+                                    onChange={(e) => setNueva({ ...nueva, numeroFactura: e.target.value })}
+                                    className={inputCls}
+                                    placeholder="001-001-0000123"
+                                />
+                            </Campo>
+                            <Campo label="Fecha de la factura *">
+                                <input
+                                    type="date"
+                                    value={nueva.fechaCompra}
+                                    onChange={(e) => setNueva({ ...nueva, fechaCompra: e.target.value })}
+                                    className={inputCls}
+                                />
+                            </Campo>
+                        </div>
+
                         <Campo label="Proveedor *">
-                            <select
-                                value={nueva.proveedorId}
-                                onChange={(e) => setNueva({ ...nueva, proveedorId: e.target.value })}
-                                className={inputCls}
-                            >
-                                <option value="">Elegir proveedor…</option>
-                                {proveedores.map((pr) => (
-                                    <option key={pr.id} value={pr.id}>{pr.nombre}</option>
-                                ))}
-                            </select>
+                            <div className="flex gap-2">
+                                <select
+                                    value={nueva.proveedorId}
+                                    onChange={(e) => setNueva({ ...nueva, proveedorId: e.target.value })}
+                                    className={`${inputCls} min-w-0`}
+                                >
+                                    <option value="">Elegir proveedor…</option>
+                                    {proveedores.map((pr) => (
+                                        <option key={pr.id} value={pr.id}>{pr.nombre}</option>
+                                    ))}
+                                </select>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setErrorInline('')
+                                        setProvNuevo(provNuevo ? null : { ...PROVEEDOR_VACIO })
+                                    }}
+                                    className="whitespace-nowrap text-xs text-blue-600 hover:underline"
+                                >
+                                    + Nuevo proveedor
+                                </button>
+                            </div>
                         </Campo>
-                        <Campo label="Fecha de compra *">
-                            <input
-                                type="date"
-                                value={nueva.fechaCompra}
-                                onChange={(e) => setNueva({ ...nueva, fechaCompra: e.target.value })}
-                                className={inputCls}
-                            />
-                        </Campo>
+
+                        {provNuevo && (
+                            <div className="border border-blue-100 bg-blue-50/40 rounded-lg p-3 mb-4">
+                                <p className="text-xs font-medium text-gray-700 mb-2">Nuevo proveedor</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    <input
+                                        value={provNuevo.nombre}
+                                        onChange={(e) => setProvNuevo({ ...provNuevo, nombre: e.target.value })}
+                                        className={inputCls}
+                                        placeholder="Nombre *"
+                                    />
+                                    <input
+                                        value={provNuevo.contacto}
+                                        onChange={(e) => setProvNuevo({ ...provNuevo, contacto: e.target.value })}
+                                        className={inputCls}
+                                        placeholder="Contacto"
+                                    />
+                                    <input
+                                        value={provNuevo.telefono}
+                                        onChange={(e) => setProvNuevo({ ...provNuevo, telefono: e.target.value })}
+                                        className={inputCls}
+                                        placeholder="Teléfono"
+                                    />
+                                    <input
+                                        type="email"
+                                        value={provNuevo.email}
+                                        onChange={(e) => setProvNuevo({ ...provNuevo, email: e.target.value })}
+                                        className={inputCls}
+                                        placeholder="Email"
+                                    />
+                                </div>
+                                {errorInline && !prodNuevo && <p className="text-red-500 text-xs mt-2">{errorInline}</p>}
+                                <div className="flex justify-end gap-2 mt-3">
+                                    <BotonSecundario type="button" onClick={() => setProvNuevo(null)}>
+                                        Cancelar
+                                    </BotonSecundario>
+                                    <BotonPrimario type="button" disabled={guardando} onClick={guardarProveedorNuevo}>
+                                        Guardar proveedor
+                                    </BotonPrimario>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
+                            <Campo label="RUC">
+                                <input
+                                    value={nueva.ruc}
+                                    onChange={(e) => setNueva({ ...nueva, ruc: e.target.value })}
+                                    className={inputCls}
+                                    placeholder="80012345-6"
+                                />
+                            </Campo>
+                            <Campo label="CI">
+                                <input
+                                    value={nueva.ci}
+                                    onChange={(e) => setNueva({ ...nueva, ci: e.target.value })}
+                                    className={inputCls}
+                                    placeholder="Si el proveedor es persona física"
+                                />
+                            </Campo>
+                            <Campo label="Condición de pago *">
+                                <select
+                                    value={nueva.condicionPago}
+                                    onChange={(e) => setNueva({ ...nueva, condicionPago: e.target.value })}
+                                    className={inputCls}
+                                >
+                                    <option value="CONTADO">Contado</option>
+                                    <option value="CREDITO">Crédito</option>
+                                </select>
+                            </Campo>
+                            {nueva.condicionPago === 'CREDITO' && (
+                                <Campo label="Vencimiento *">
+                                    <input
+                                        type="date"
+                                        value={nueva.fechaVencimiento}
+                                        onChange={(e) => setNueva({ ...nueva, fechaVencimiento: e.target.value })}
+                                        className={inputCls}
+                                    />
+                                </Campo>
+                            )}
+                        </div>
+
                         <LineasEditor
                             lineas={nueva.lineas}
                             onChange={(lineas) => setNueva({ ...nueva, lineas })}
                             equipos={equipos}
                             conCosto
+                            etiqueta="Productos"
+                            textoAgregar="+ Agregar producto"
+                            accionExtra={
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setErrorInline('')
+                                        setProdNuevo(prodNuevo ? null : { ...PRODUCTO_VACIO })
+                                    }}
+                                    className="text-xs text-blue-600 hover:underline"
+                                >
+                                    + Nuevo producto
+                                </button>
+                            }
                         />
+
+                        {prodNuevo && (
+                            <div className="border border-blue-100 bg-blue-50/40 rounded-lg p-3 mb-4">
+                                <p className="text-xs font-medium text-gray-700 mb-2">Nuevo producto</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    <input
+                                        value={prodNuevo.nombre}
+                                        onChange={(e) => setProdNuevo({ ...prodNuevo, nombre: e.target.value })}
+                                        className={inputCls}
+                                        placeholder="Nombre *"
+                                    />
+                                    <select
+                                        value={prodNuevo.categoriaId}
+                                        onChange={(e) => setProdNuevo({ ...prodNuevo, categoriaId: e.target.value })}
+                                        className={inputCls}
+                                    >
+                                        <option value="">Categoría *</option>
+                                        {categorias.map((c) => (
+                                            <option key={c.id} value={c.id}>{c.nombre}</option>
+                                        ))}
+                                    </select>
+                                    <MontoInput
+                                        value={prodNuevo.precioDia}
+                                        onChange={(valor) => setProdNuevo({ ...prodNuevo, precioDia: valor })}
+                                        placeholder="Precio por día *"
+                                    />
+                                </div>
+                                <p className="text-[11px] text-gray-400 mt-2">
+                                    Nace con stock 0; esta factura le suma las unidades compradas.
+                                </p>
+                                {errorInline && <p className="text-red-500 text-xs mt-2">{errorInline}</p>}
+                                <div className="flex justify-end gap-2 mt-3">
+                                    <BotonSecundario type="button" onClick={() => setProdNuevo(null)}>
+                                        Cancelar
+                                    </BotonSecundario>
+                                    <BotonPrimario type="button" disabled={guardando} onClick={guardarProductoNuevo}>
+                                        Guardar producto
+                                    </BotonPrimario>
+                                </div>
+                            </div>
+                        )}
+
+                        <Campo label="Observaciones">
+                            <input
+                                value={nueva.observaciones}
+                                onChange={(e) => setNueva({ ...nueva, observaciones: e.target.value })}
+                                className={inputCls}
+                                maxLength={255}
+                            />
+                        </Campo>
+
+                        <div className="flex items-center justify-between text-sm font-semibold text-gray-900 mb-1">
+                            <span>Total estimado</span>
+                            <span>{formatoGs(totalNueva)}</span>
+                        </div>
                         <p className="text-xs text-gray-400 mb-4">
-                            Los subtotales y el total los calcula el servidor. La orden nace en estado PENDIENTE.
+                            Al guardar, la factura se registra como recibida y suma el stock de los productos al instante.
+                            El servidor recalcula los subtotales y el total.
                         </p>
                         {errorNueva && <p className="text-red-500 text-xs mb-3">{errorNueva}</p>}
                         <div className="flex justify-end gap-2">
@@ -309,7 +579,7 @@ export default function OrdenesCompra() {
                                 Cancelar
                             </BotonSecundario>
                             <BotonPrimario type="submit" disabled={guardando}>
-                                {guardando ? 'Guardando…' : nueva.id ? 'Guardar cambios' : 'Crear orden'}
+                                {guardando ? 'Guardando…' : 'Registrar factura'}
                             </BotonPrimario>
                         </div>
                     </form>
@@ -318,7 +588,7 @@ export default function OrdenesCompra() {
 
             <Modal
                 abierto={!!detalle}
-                titulo={`Orden de ${detalle ? nombreProveedor(detalle) : ''}`}
+                titulo={`Factura ${detalle?.numeroFactura ?? ''} · ${detalle ? nombreProveedor(detalle) : ''}`}
                 onCerrar={() => setDetalle(null)}
                 ancho="max-w-2xl"
             >
@@ -330,13 +600,40 @@ export default function OrdenesCompra() {
                                 <p className="text-gray-900 font-medium">{nombreProveedor(detalle)}</p>
                             </div>
                             <div>
-                                <p className="text-xs text-gray-400">Fecha de compra</p>
+                                <p className="text-xs text-gray-400">Fecha de la factura</p>
                                 <p className="text-gray-900 font-medium">{formatoFecha(detalle.fechaCompra)}</p>
                             </div>
                             <div>
-                                <p className="text-xs text-gray-400">Estado</p>
-                                <Badge estado={detalle.estado} />
+                                <p className="text-xs text-gray-400">N° de factura</p>
+                                <p className="text-gray-900 font-medium">{detalle.numeroFactura ?? '—'}</p>
                             </div>
+                            <div>
+                                <p className="text-xs text-gray-400">RUC / CI</p>
+                                <p className="text-gray-900 font-medium">
+                                    {[detalle.ruc, detalle.ci].filter(Boolean).join(' / ') || '—'}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-xs text-gray-400">Condición de pago</p>
+                                <CondicionTag condicion={detalle.condicionPago} />
+                                {detalle.condicionPago === 'CREDITO' && detalle.fechaVencimiento && (
+                                    <span className="ml-2 text-xs text-gray-500">
+                                        vence {formatoFecha(detalle.fechaVencimiento)}
+                                    </span>
+                                )}
+                            </div>
+                            {detalle.observaciones && (
+                                <div className="col-span-2">
+                                    <p className="text-xs text-gray-400">Observaciones</p>
+                                    <p className="text-gray-900">{detalle.observaciones}</p>
+                                </div>
+                            )}
+                            {TRANSICIONES[detalle.estado]?.length > 0 && (
+                                <div>
+                                    <p className="text-xs text-gray-400">Estado (orden anterior)</p>
+                                    <Badge estado={detalle.estado} />
+                                </div>
+                            )}
                         </div>
 
                         <table className="w-full text-sm mb-4">
@@ -360,7 +657,7 @@ export default function OrdenesCompra() {
                                 {(detalle.detalles ?? []).length === 0 && (
                                     <tr>
                                         <td colSpan={4} className="py-4 text-center text-gray-400 text-xs">
-                                            Esta orden no tiene líneas de detalle.
+                                            Esta factura no tiene líneas de detalle.
                                         </td>
                                     </tr>
                                 )}
@@ -380,14 +677,6 @@ export default function OrdenesCompra() {
 
                         <div className="flex justify-end gap-2">
                             <BotonSecundario onClick={() => setDetalle(null)}>Cerrar</BotonSecundario>
-                            {detalle.estado === 'PENDIENTE' && (
-                                <button
-                                    onClick={() => abrirEditar(detalle)}
-                                    className="border border-blue-200 text-blue-700 hover:bg-blue-50 text-sm font-medium px-4 py-2 rounded-lg transition"
-                                >
-                                    Editar
-                                </button>
-                            )}
                             {acciones.map((e) => (
                                 <button
                                     key={e}

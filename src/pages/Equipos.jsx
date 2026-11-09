@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useConfirmar } from '../context/useConfirmar'
 import AppLayout from '../layouts/AppLayout'
 import {
     Badge,
@@ -35,6 +36,7 @@ const TAMANO_PAGINA = 8
 const STOCK_BAJO = 2
 
 export default function Equipos() {
+    const confirmar = useConfirmar()
     const [pagina, setPagina] = useState(0)
     const [busqueda, setBusqueda] = useState('')
     const [categoria, setCategoria] = useState('Todas')
@@ -109,7 +111,7 @@ export default function Equipos() {
     }
 
     async function darDeBaja(eq) {
-        if (!window.confirm(`¿Dar de baja "${eq.nombre}"? Quedará en estado BAJA.`)) return
+        if (!(await confirmar(`¿Dar de baja "${eq.nombre}"? Quedará en estado BAJA.`))) return
         setErrorAccion('')
         try {
             await darDeBajaEquipo(eq.id)

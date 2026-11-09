@@ -11,7 +11,7 @@ const menuItems = [
     { nombre: 'Equipos', ruta: '/equipos', roles: ROLES.alquiler },
     { nombre: 'Clientes', ruta: '/clientes', roles: ROLES.alquiler },
     { nombre: 'Órdenes de Alquiler', ruta: '/ordenes-alquiler', roles: ROLES.alquiler },
-    { nombre: 'Órdenes de Compra', ruta: '/ordenes-compra', roles: ROLES.compras },
+    { nombre: 'Facturas de Compra', ruta: '/ordenes-compra', roles: ROLES.compras },
     { nombre: 'Proveedores', ruta: '/proveedores', roles: ROLES.compras },
     { nombre: 'Usuarios', ruta: '/usuarios', roles: ROLES.seguridad },
     { nombre: 'Reportes', ruta: '/reportes', roles: ROLES.todos },

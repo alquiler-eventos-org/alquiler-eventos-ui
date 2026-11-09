@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useConfirmar } from '../../context/useConfirmar'
 import Fila from './Fila'
 import { BotonPrimario, BotonSecundario, Cargando, ErrorBanner, SinDatos, inputCls } from '../UI'
 import { mensajeDeError } from '../../api/client'
@@ -11,6 +12,7 @@ import { useConsulta } from '../../hooks/useConsulta'
 // compras (y el administrador).
 
 export default function Categorias() {
+    const confirmar = useConfirmar()
     const { datos, error, cargando, recargar } = useConsulta(() => listarCategorias(), [])
     const categorias = Array.isArray(datos) ? datos : []
     const [nueva, setNueva] = useState('')
@@ -49,7 +51,7 @@ export default function Categorias() {
     }
 
     async function quitar(cat) {
-        if (!window.confirm(`¿Eliminar la categoría "${cat.nombre}"?`)) return
+        if (!(await confirmar(`¿Eliminar la categoría "${cat.nombre}"?`))) return
         await ejecutar(() => eliminarCategoria(cat.id))
     }
 

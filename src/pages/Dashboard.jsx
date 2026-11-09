@@ -41,7 +41,7 @@ export default function Dashboard() {
             label: 'Ingresos del mes',
             valor: ordenes ? formatoGs(ingresosDelMes(ordenes)) : null,
         },
-        { label: 'Compras pendientes', valor: datos?.comprasPendientes ?? null },
+        { label: 'Facturas de compra del mes', valor: datos?.comprasMes ?? null },
     ]
 
     const recientes = ordenes ? [...ordenes].sort((a, b) => b.id - a.id).slice(0, 5) : []
