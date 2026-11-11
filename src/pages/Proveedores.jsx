@@ -19,6 +19,7 @@ import {
     crearProveedor,
     eliminarProveedor,
     listarProveedores,
+    obtenerProveedor,
 } from '../api/proveedores'
 import { mensajeDeError, normalizarPagina } from '../api/client'
 import { useConsulta } from '../hooks/useConsulta'
@@ -61,7 +62,14 @@ export default function Proveedores() {
         setModal({ abierto: true, id: null })
     }
 
-    function abrirEdicion(pr) {
+    async function abrirEdicion(fila) {
+        // GET /proveedores/{id}: el ms lo sirve desde Redis (MISS la 1ra vez, HIT despues)
+        let pr
+        try {
+            pr = (await obtenerProveedor(fila.id)).data ?? fila
+        } catch {
+            pr = fila
+        }
         setForm({
             nombre: pr.nombre ?? '',
             contacto: pr.contacto ?? '',

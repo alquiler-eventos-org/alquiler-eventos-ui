@@ -26,6 +26,7 @@ import {
     cambiarEstadoOrdenCompra,
     crearOrdenCompra,
     listarOrdenesCompra,
+    obtenerOrdenCompra,
 } from '../api/ordenesCompra'
 import MontoInput from '../components/MontoInput'
 
@@ -121,9 +122,16 @@ export default function OrdenesCompra() {
         setPagina(0)
     }
 
-    function abrirDetalle(orden) {
+    async function abrirDetalle(orden) {
         setErrorAccion('')
         setDetalle(orden)
+        // GET /ordenes-compra/{id}: Redis (MISS la 1ra vez, HIT despues)
+        try {
+            const { data } = await obtenerOrdenCompra(orden.id)
+            if (data) setDetalle((d) => (d?.id === orden.id ? { ...orden, ...data } : d))
+        } catch {
+            // se queda con los datos de la fila
+        }
     }
 
     async function cambiarEstado(orden, nuevoEstado) {

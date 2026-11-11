@@ -25,6 +25,7 @@ import {
     cambiarEstadoOrdenAlquiler,
     crearOrdenAlquiler,
     listarOrdenesAlquiler,
+    obtenerOrdenAlquiler,
 } from '../api/ordenesAlquiler'
 
 // ====== Pantalla REAL: órdenes de alquiler desde ms-alquiler via el API Gateway ======
@@ -97,9 +98,16 @@ export default function OrdenesAlquiler() {
         setPagina(0)
     }
 
-    function abrirDetalle(orden) {
+    async function abrirDetalle(orden) {
         setErrorAccion('')
         setDetalle(orden)
+        // GET /ordenes-alquiler/{id}: Redis (MISS la 1ra vez, HIT despues)
+        try {
+            const { data } = await obtenerOrdenAlquiler(orden.id)
+            if (data) setDetalle((d) => (d?.id === orden.id ? { ...orden, ...data } : d))
+        } catch {
+            // se queda con los datos de la fila
+        }
     }
 
     async function cambiarEstado(orden, nuevoEstado) {

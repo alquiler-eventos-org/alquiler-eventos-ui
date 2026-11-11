@@ -13,7 +13,13 @@ import {
     filtroCls,
     inputCls,
 } from '../components/UI'
-import { actualizarCliente, crearCliente, eliminarCliente, listarClientes } from '../api/clientes'
+import {
+    actualizarCliente,
+    crearCliente,
+    eliminarCliente,
+    listarClientes,
+    obtenerCliente,
+} from '../api/clientes'
 import { mensajeDeError, normalizarPagina } from '../api/client'
 import { useConsulta } from '../hooks/useConsulta'
 
@@ -61,7 +67,14 @@ export default function Clientes() {
         setModal({ abierto: true, id: null })
     }
 
-    function abrirEdicion(c) {
+    async function abrirEdicion(fila) {
+        // GET /clientes/{id}: el ms lo sirve desde Redis (MISS la 1ra vez, HIT despues)
+        let c
+        try {
+            c = (await obtenerCliente(fila.id)).data ?? fila
+        } catch {
+            c = fila
+        }
         setForm({
             nombre: c.nombre ?? '',
             apellido: c.apellido ?? '',

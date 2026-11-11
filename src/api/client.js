@@ -4,13 +4,13 @@ import { borrarSesion, getToken } from './sesion'
 /**
  * Clientes axios, uno por microservicio.
  *
- * Todos pasan por el API GATEWAY (puerto 8080), que enruta a cada
- * microservicio via Eureka (lb://). En desarrollo Vite hace de proxy
- * (ver vite.config.js): el navegador llama a /ms/seguridad/..., /ms/compras/...
- * o /ms/alquiler/... y Vite lo reenvia al Gateway http://localhost:8080/api/...
- * Para apuntar a otra URL (ej. backend desplegado) definí
- * VITE_API_SEGURIDAD / VITE_API_COMPRAS / VITE_API_ALQUILER en un .env.local
+ * Todos llaman DIRECTO al API GATEWAY (http://localhost:8080/api), que valida el
+ * JWT y enruta a cada microservicio via Eureka (lb://). El gateway tiene CORS
+ * habilitado para el origen de la UI. Para apuntar a otro gateway (ej. desplegado)
+ * definí VITE_API_GATEWAY en un .env.local
  */
+const GATEWAY = import.meta.env.VITE_API_GATEWAY ?? 'http://localhost:8080/api'
+
 function crearCliente(baseURL) {
     const api = axios.create({ baseURL, timeout: 15000 })
 
@@ -37,9 +37,9 @@ function crearCliente(baseURL) {
     return api
 }
 
-export const apiSeguridad = crearCliente(import.meta.env.VITE_API_SEGURIDAD ?? '/ms/seguridad')
-export const apiCompras = crearCliente(import.meta.env.VITE_API_COMPRAS ?? '/ms/compras')
-export const apiAlquiler = crearCliente(import.meta.env.VITE_API_ALQUILER ?? '/ms/alquiler')
+export const apiSeguridad = crearCliente(GATEWAY)
+export const apiCompras = crearCliente(GATEWAY)
+export const apiAlquiler = crearCliente(GATEWAY)
 
 /**
  * Extrae el mensaje legible de un error HTTP usando el formato ApiError del
